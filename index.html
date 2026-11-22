@@ -397,7 +397,7 @@
                     <!-- Assessment Date -->
                     <div>
                         <label for="pt-date" class="block text-sm font-bold text-ink mb-1.5">Assessment Date</label>
-                        <input type="date" id="pt-date" onchange="saveAndSync()" class="w-full min-w-0 max-w-full block px-4 py-3 rounded-2xl bg-white border-2 border-songbird focus:border-summercrush focus:outline-none text-ink font-medium">
+                        <input type="date" id="pt-date" onchange="appState.dateTouched = true; saveAndSync()" class="w-full min-w-0 max-w-full block px-4 py-3 rounded-2xl bg-white border-2 border-songbird focus:border-summercrush focus:outline-none text-ink font-medium">
                     </div>
 
                     <!-- Marital Status -->
@@ -531,7 +531,7 @@
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-ink/80 mb-1">TARIKH / DATE:</label>
-                            <input type="date" id="dass-pt-date" onchange="syncDassPatientFields(this.value, 'date')" class="w-full min-w-0 max-w-full block px-3 py-2 rounded-xl bg-white border border-allthat text-sm font-medium">
+                            <input type="date" id="dass-pt-date" onchange="appState.dateTouched = true; syncDassPatientFields(this.value, 'date')" class="w-full min-w-0 max-w-full block px-3 py-2 rounded-xl bg-white border border-allthat text-sm font-medium">
                         </div>
                     </div>
 
@@ -891,7 +891,7 @@
 
                     <!-- Tactile Gradient Range Slider -->
                     <div class="space-y-3 pt-2">
-                        <input type="range" id="pain-vas-slider" min="0" max="10" step="1" value="0" oninput="updatePainScore(this.value)" class="vas-slider w-full" style="background: linear-gradient(90deg, #48D6C8 0%, #D9E855 30%, #F5D623 55%, #FF9B71 80%, #E95CE0 100%);">
+                        <input type="range" id="pain-vas-slider" min="0" max="10" step="1" value="0" oninput="updatePainScore(this.value, true)" class="vas-slider w-full" style="background: linear-gradient(90deg, #48D6C8 0%, #D9E855 30%, #F5D623 55%, #FF9B71 80%, #E95CE0 100%);">
 
                         <!-- Quick-Tap Number Buttons 0-10 -->
                         <div id="pain-number-buttons" class="grid grid-cols-11 gap-1 sm:gap-2"></div>
@@ -2029,6 +2029,7 @@
             patientMode: false,
             patientAssessmentTab: 'dass',
             sensoryFilter: 'ALL',
+            dateTouched: false,
             patient: {
                 name: '',
                 ic: '',
@@ -2058,7 +2059,9 @@
                 ambulation: 15,
                 transfers: 15
             },
+            mbiTouched: false,
             painScore: 0,
+            painTouched: false,
             subjectiveMood: '',
             subjectiveAppearance: '',
             soap: {
@@ -2254,7 +2257,7 @@
             if (elementId === 'soap-live-preview') {
                 appState.customLiveRecordText = null;
                 updateSoapPreview();
-                showToast('Live Clinical Record synced back from SOAP fields.', 'bg-songbird');
+                showToast('Live Clinical Record synced back from ticked/typed items.', 'bg-songbird');
                 return;
             }
             const defaultVal = appState.defaultInputs[elementId] !== undefined ? appState.defaultInputs[elementId] : '';
@@ -2599,7 +2602,6 @@
         }
 
         function getQuadrantClassification(quad, score) {
-            // Brown & Dunn Adult Sensory Profile normative cutoffs (Ages 18-64, 15 items per quadrant)
             const ranges = {
                 lowreg: [23, 30, 44, 52],
                 seeking: [35, 42, 56, 63],
@@ -2716,6 +2718,7 @@
 
         function selectMbiLevel(itemId, score) {
             appState.mbiScores[itemId] = score;
+            appState.mbiTouched = true;
             renderShahMbi();
             updateSoapPreview();
         }
@@ -2725,6 +2728,7 @@
                 const maxLvl = item.levels[item.levels.length - 1];
                 appState.mbiScores[item.id] = maxLvl.score;
             });
+            appState.mbiTouched = false;
             renderShahMbi();
             updateSoapPreview();
             showToast('Shah MBI reset to 100/100 (Independent).', 'bg-heartfelt');
@@ -2773,7 +2777,7 @@
             container.innerHTML = PAIN_LEVELS.map(p => {
                 const isSelected = Number(appState.painScore) === p.score;
                 return `
-                    <button type="button" onclick="updatePainScore(${p.score})"
+                    <button type="button" onclick="updatePainScore(${p.score}, true)"
                         class="py-2 rounded-xl border-2 font-bold text-xs sm:text-sm cursor-pointer transition-all ${isSelected ? 'bg-summercrush text-white border-ink scale-105 shadow-xs' : 'bg-extraglazed hover:bg-songbird/40 text-ink border-songbird'}">
                         ${p.score}
                     </button>
@@ -2869,9 +2873,12 @@
             `;
         }
 
-        function updatePainScore(val) {
+        function updatePainScore(val, fromUser = false) {
             const score = Math.max(0, Math.min(10, Number(val) || 0));
             appState.painScore = score;
+            if (fromUser) {
+                appState.painTouched = true;
+            }
             const info = PAIN_LEVELS[score];
 
             document.getElementById('pain-vas-slider').value = score;
@@ -2999,18 +3006,26 @@
             const mbi = recalculateMbi();
             const painInfo = PAIN_LEVELS[appState.painScore] || PAIN_LEVELS[0];
 
+            const pastInterests = [];
             const currentInterests = [];
             const goalInterests = [];
             Object.entries(appState.interestState).forEach(([item, st]) => {
+                if (st.past) pastInterests.push(item.split(' (')[0]);
                 if (st.current) currentInterests.push(item.split(' (')[0]);
                 if (st.goal) goalInterests.push(item.split(' (')[0]);
             });
 
             const lines = [];
-            lines.push(`- DASS-21 Screening (${dass.answered}/21 items): Depression = ${dass.d} (${dass.dSev}), Anxiety = ${dass.a} (${dass.aSev}), Stress = ${dass.s} (${dass.sSev}).`);
+            if (dass.answered > 0) {
+                lines.push(`- DASS-21 Screening (${dass.answered}/21 items): Depression = ${dass.d} (${dass.dSev}), Anxiety = ${dass.a} (${dass.aSev}), Stress = ${dass.s} (${dass.sSev}).`);
+            }
 
-            if (currentInterests.length > 0 || goalInterests.length > 0) {
-                lines.push(`- Modified Interest Checklist: Current interests [${currentInterests.join(', ') || 'None'}]; Future goal activities [${goalInterests.join(', ') || 'None'}].`);
+            if (pastInterests.length > 0 || currentInterests.length > 0 || goalInterests.length > 0) {
+                const parts = [];
+                if (pastInterests.length > 0) parts.push(`Past interests [${pastInterests.join(', ')}]`);
+                if (currentInterests.length > 0) parts.push(`Current interests [${currentInterests.join(', ')}]`);
+                if (goalInterests.length > 0) parts.push(`Future goal activities [${goalInterests.join(', ')}]`);
+                lines.push(`- Modified Interest Checklist: ${parts.join('; ')}.`);
             }
 
             if (sensory.answered > 0) {
@@ -3018,8 +3033,14 @@
                 lines.push(`- Adult Sensory Profile (${sensory.answered}/60 items): Low Registration = ${t.lowreg}/75 (${getQuadrantClassification('lowreg', t.lowreg).label}), Sensation Seeking = ${t.seeking}/75 (${getQuadrantClassification('seeking', t.seeking).label}), Sensory Sensitivity = ${t.sensitivity}/75 (${getQuadrantClassification('sensitivity', t.sensitivity).label}), Sensation Avoiding = ${t.avoiding}/75 (${getQuadrantClassification('avoiding', t.avoiding).label}).`);
             }
 
-            lines.push(`- Modified Barthel Index (Shah Version): ${mbi.total}/100 — ${mbi.category}.`);
-            lines.push(`- Pain Score (Visual Analog Scale): ${appState.painScore}/10 — ${painInfo.title}.`);
+            if (appState.mbiTouched) {
+                lines.push(`- Modified Barthel Index (Shah Version): ${mbi.total}/100 — ${mbi.category}.`);
+            }
+
+            if (appState.painTouched) {
+                lines.push(`- Pain Score (Visual Analog Scale): ${appState.painScore}/10 — ${painInfo.title}.`);
+            }
+
             return lines.join('\n');
         }
 
@@ -3040,40 +3061,45 @@
                 .join('\n')
                 .trim();
 
-            oBox.value = filteredExisting ? `${filteredExisting}\n${compiledScores}` : compiledScores;
+            if (filteredExisting && compiledScores) {
+                oBox.value = `${filteredExisting}\n${compiledScores}`;
+            } else {
+                oBox.value = filteredExisting || compiledScores;
+            }
             updateSoapPreview();
-            showToast('Assessment scores synced into Objective (O)!', 'bg-starrynight');
+            showToast('Ticked assessments synced into Objective (O)!', 'bg-starrynight');
         }
 
         function autoPopulateSoap() {
-            const sBox = document.getElementById('soap-s');
-            if (!sBox.value.trim()) {
-                sBox.value = '- Patient attended OT Psychiatry session, alert and cooperative.\n- Reports stress and sleep disturbance impacting daily routines and leisure participation.';
-            }
             syncObjectiveAssessments();
-            const oBox = document.getElementById('soap-o');
-            if (!oBox.value.includes('MSE:')) {
-                oBox.value = `- MSE: Alert, cooperative, fair eye contact, coherent speech, congruent affect.\n${oBox.value}`;
-            }
-
-            const aBox = document.getElementById('soap-a');
-            if (!aBox.value.trim()) {
-                aBox.value = `- ${SOAP_QUICK_CHIPS.a[0]}\n- ${SOAP_QUICK_CHIPS.a[2]}`;
-            }
-
-            const pBox = document.getElementById('soap-p');
-            if (!pBox.value.trim()) {
-                pBox.value = `- ${SOAP_QUICK_CHIPS.stg[0]}\n- ${SOAP_QUICK_CHIPS.ltg[0]}\n- ${TREATMENT_BOXES[0].text}\n- ${TREATMENT_BOXES[1].text}\n- ${FUTURE_REVIEW_BOXES[0].text}`;
-            }
-
             updateSoapPreview();
-            showToast('All assessments compiled into SOAP Note!', 'bg-summercrush text-white');
+            showToast('All ticked assessments synced into SOAP Note!', 'bg-summercrush text-white');
         }
 
         function buildFormattedSoapText() {
             const pt = appState.patient;
             const sVal = document.getElementById('soap-s').value.trim();
-            const oVal = document.getElementById('soap-o').value.trim() || getCompiledObjectiveAssessmentsText();
+            const manualO = document.getElementById('soap-o').value.trim();
+            const compiledAssessments = getCompiledObjectiveAssessmentsText();
+
+            let oVal = '';
+            if (manualO && compiledAssessments) {
+                const filteredManual = manualO
+                    .split('\n')
+                    .filter(line =>
+                        !line.startsWith('- DASS-21 Screening') &&
+                        !line.startsWith('- Modified Interest Checklist') &&
+                        !line.startsWith('- Adult Sensory Profile') &&
+                        !line.startsWith('- Modified Barthel Index') &&
+                        !line.startsWith('- Pain Score (Visual Analog Scale)')
+                    )
+                    .join('\n')
+                    .trim();
+                oVal = filteredManual ? `${filteredManual}\n${compiledAssessments}` : compiledAssessments;
+            } else {
+                oVal = manualO || compiledAssessments;
+            }
+
             const aVal = document.getElementById('soap-a').value.trim();
             const pVal = document.getElementById('soap-p').value.trim();
 
@@ -3091,32 +3117,34 @@
                 `;
             }
 
-            return `OCCUPATIONAL THERAPY PSYCHIATRY CLINICAL NOTE (SOAP)
-========================================================
-Patient Name : ${pt.name || '-'}
-NRIC / No.KP : ${pt.ic || '-'}
-MRN / RN     : ${pt.mrn || '-'}
-Age / Gender : ${pt.age || '-'} / ${pt.gender || '-'}
-Date         : ${pt.date || '-'}
-Diagnosis    : ${pt.diagnosis || '-'}
-Medications  : ${pt.meds || '-'}
-Social Hx    : ${pt.social || '-'}
---------------------------------------------------------
+            // Include ONLY patient fields that the user has actually filled in
+            const ageGender = [pt.age, pt.gender].filter(Boolean).join(' / ');
+            const headerLines = [];
+            if (pt.name) headerLines.push(`Patient Name : ${pt.name}`);
+            if (pt.ic) headerLines.push(`NRIC / No.KP : ${pt.ic}`);
+            if (pt.mrn) headerLines.push(`MRN / RN     : ${pt.mrn}`);
+            if (ageGender) headerLines.push(`Age / Gender : ${ageGender}`);
+            if (appState.dateTouched && pt.date) headerLines.push(`Date         : ${pt.date}`);
+            if (pt.marital) headerLines.push(`Marital      : ${pt.marital}`);
+            if (pt.occupation) headerLines.push(`Occupation   : ${pt.occupation}`);
+            if (pt.diagnosis) headerLines.push(`Diagnosis    : ${pt.diagnosis}`);
+            if (pt.meds) headerLines.push(`Medications  : ${pt.meds}`);
+            if (pt.social) headerLines.push(`Social Hx    : ${pt.social}`);
 
-S (SUBJECTIVE):
-${sVal || '- Not recorded.'}
+            const blocks = [];
+            if (headerLines.length > 0) {
+                blocks.push(headerLines.join('\n'));
+            }
+            if (sVal) blocks.push(`S (SUBJECTIVE):\n${sVal}`);
+            if (oVal) blocks.push(`O (OBJECTIVE):\n${oVal}`);
+            if (aVal) blocks.push(`A (ASSESSMENT):\n${aVal}`);
+            if (pVal) blocks.push(`P (PLAN):\n${pVal}`);
 
-O (OBJECTIVE):
-${oVal}
+            if (blocks.length === 0) {
+                return '';
+            }
 
-A (ASSESSMENT):
-${aVal || '- Not recorded.'}
-
-P (PLAN):
-${pVal || '- Not recorded.'}
-
---------------------------------------------------------
-Prepared by: OT Ezlyana`;
+            return blocks.join('\n\n');
         }
 
         function updateSoapPreview() {
@@ -3141,27 +3169,28 @@ Prepared by: OT Ezlyana`;
             const fullText = previewEl.value;
             appState.customLiveRecordText = fullText;
 
-            const sMatch = fullText.match(/S \(SUBJECTIVE\):\n([\s\S]*?)(?=\n\nO \(OBJECTIVE\):|$)/);
-            const oMatch = fullText.match(/O \(OBJECTIVE\):\n([\s\S]*?)(?=\n\nA \(ASSESSMENT\):|$)/);
+            const sMatch = fullText.match(/S \(SUBJECTIVE\):\n([\s\S]*?)(?=\n\nO \(OBJECTIVE\):|\n\nA \(ASSESSMENT\):|\n\nP \(PLAN\):|$)/);
+            const oMatch = fullText.match(/O \(OBJECTIVE\):\n([\s\S]*?)(?=\n\nA \(ASSESSMENT\):|\n\nP \(PLAN\):|$)/);
             const aMatch = fullText.match(/A \(ASSESSMENT\):\n([\s\S]*?)(?=\n\nP \(PLAN\):|$)/);
-            const pMatch = fullText.match(/P \(PLAN\):\n([\s\S]*?)(?=\n\n-{10,}|$)/);
+            const pMatch = fullText.match(/P \(PLAN\):\n([\s\S]*?)$/);
 
             if (sMatch) {
-                const val = sMatch[1].trim() === '- Not recorded.' ? '' : sMatch[1].trim();
+                const val = sMatch[1].trim();
                 document.getElementById('soap-s').value = val;
                 appState.soap.s = val;
             }
             if (oMatch) {
-                document.getElementById('soap-o').value = oMatch[1].trim();
-                appState.soap.o = oMatch[1].trim();
+                const val = oMatch[1].trim();
+                document.getElementById('soap-o').value = val;
+                appState.soap.o = val;
             }
             if (aMatch) {
-                const val = aMatch[1].trim() === '- Not recorded.' ? '' : aMatch[1].trim();
+                const val = aMatch[1].trim();
                 document.getElementById('soap-a').value = val;
                 appState.soap.a = val;
             }
             if (pMatch) {
-                const val = pMatch[1].trim() === '- Not recorded.' ? '' : pMatch[1].trim();
+                const val = pMatch[1].trim();
                 document.getElementById('soap-p').value = val;
                 appState.soap.p = val;
             }
@@ -3236,7 +3265,6 @@ Prepared by: OT Ezlyana`;
             const dateStr = appState.patient.date || new Date().toISOString().split('T')[0];
             const filename = `OT_Psychiatry_SOAP_${cleanName}_${dateStr}.doc`;
 
-            // Copy text to clipboard for instant paste into Google Docs
             const tempArea = document.createElement('textarea');
             tempArea.value = soapText;
             tempArea.style.position = 'fixed';
@@ -3246,7 +3274,6 @@ Prepared by: OT Ezlyana`;
             try { document.execCommand('copy'); } catch (e) {}
             document.body.removeChild(tempArea);
 
-            // Create Word/Google-Docs compatible HTML Blob
             const htmlDoc = `
                 <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
                 <head><meta charset='utf-8'><title>${filename}</title></head>
@@ -3261,7 +3288,6 @@ Prepared by: OT Ezlyana`;
             dlLink.download = filename;
             document.getElementById('gdrive-filename').textContent = filename;
 
-            // Trigger automatic download
             const a = document.createElement('a');
             a.href = url;
             a.download = filename;
@@ -3293,6 +3319,7 @@ Prepared by: OT Ezlyana`;
                 specialty: 'Psychiatry',
                 clinician: 'OT Ezlyana',
                 savedAt: new Date().toISOString(),
+                dateTouched: appState.dateTouched,
                 patient: { ...appState.patient },
                 dassAnswers: { ...appState.dassAnswers },
                 dassSummary: dass,
@@ -3301,8 +3328,10 @@ Prepared by: OT Ezlyana`;
                 sensoryAnswers: { ...appState.sensoryAnswers },
                 sensorySummary: sensory,
                 mbiScores: { ...appState.mbiScores },
+                mbiTouched: appState.mbiTouched,
                 mbiSummary: mbi,
                 painScore: appState.painScore,
+                painTouched: appState.painTouched,
                 subjectiveMood: appState.subjectiveMood,
                 subjectiveAppearance: appState.subjectiveAppearance,
                 soap: {
@@ -3346,14 +3375,12 @@ Prepared by: OT Ezlyana`;
 
             await saveCurrentRecordQuick();
 
-            // Broadcast to parent App Collector shell if embedded
             try {
                 if (window.parent && window.parent !== window) {
                     window.parent.postMessage({ type: 'OT_APP_COLLECTOR_SAVE', payload: record }, '*');
                 }
             } catch (e) {}
 
-            // Also download portable .json for office PC App Collector import
             const cleanName = (record.patient.name || 'Patient').replace(/[^a-zA-Z0-9_-]/g, '_');
             const dateStr = record.patient.date || new Date().toISOString().split('T')[0];
             const blob = new Blob([JSON.stringify(record, null, 2)], { type: 'application/json' });
@@ -3466,6 +3493,7 @@ Prepared by: OT Ezlyana`;
             if (!rec) return;
 
             const pt = rec.patient || {};
+            appState.dateTouched = rec.dateTouched !== undefined ? Boolean(rec.dateTouched) : Boolean(pt.name || pt.ic || pt.mrn);
             appState.patient = {
                 name: pt.name || '',
                 ic: pt.ic || '',
@@ -3498,8 +3526,12 @@ Prepared by: OT Ezlyana`;
             appState.sensoryAnswers = rec.sensoryAnswers ? { ...rec.sensoryAnswers } : {};
             if (rec.mbiScores) {
                 appState.mbiScores = { ...appState.mbiScores, ...rec.mbiScores };
+                appState.mbiTouched = rec.mbiTouched !== undefined ? Boolean(rec.mbiTouched) : true;
+            } else {
+                appState.mbiTouched = false;
             }
             appState.painScore = rec.painScore !== undefined ? Number(rec.painScore) : 0;
+            appState.painTouched = rec.painTouched !== undefined ? Boolean(rec.painTouched) : (appState.painScore > 0);
 
             if (rec.subjectiveMood) selectSubjectiveMood(rec.subjectiveMood);
             if (rec.subjectiveAppearance) selectSubjectiveAppearance(rec.subjectiveAppearance);
@@ -3514,10 +3546,10 @@ Prepared by: OT Ezlyana`;
             renderInterestChecklist();
             renderSensoryItems();
             renderShahMbi();
-            updatePainScore(appState.painScore);
+            updatePainScore(appState.painScore, appState.painTouched);
             saveAndSync();
 
-            if (rec.compiledSoapText) {
+            if (rec.compiledSoapText !== undefined) {
                 appState.customLiveRecordText = rec.compiledSoapText;
                 const previewEl = document.getElementById('soap-live-preview');
                 if (previewEl) previewEl.value = rec.compiledSoapText;
@@ -3587,7 +3619,6 @@ Prepared by: OT Ezlyana`;
             event.target.value = '';
         }
 
-        // Listen for parent App Collector messages
         window.addEventListener('message', (event) => {
             if (event.data?.type === 'OT_APP_COLLECTOR_LOAD' && event.data.payload) {
                 const localId = `collector_${Date.now()}`;
@@ -3980,7 +4011,6 @@ Prepared by: OT Ezlyana`;
             }
 
             const canvas = document.getElementById('apple-pen-canvas');
-            // Export onto solid white background so Vision OCR reads ink cleanly
             const exportCanvas = document.createElement('canvas');
             exportCanvas.width = canvas.width;
             exportCanvas.height = canvas.height;
@@ -4095,6 +4125,7 @@ Prepared by: OT Ezlyana`;
             document.getElementById('pt-age').value = '30 years old';
             document.getElementById('pt-gender').value = 'Female';
             document.getElementById('pt-date').value = new Date().toISOString().split('T')[0];
+            appState.dateTouched = true;
             document.getElementById('pt-marital').value = 'Single';
             document.getElementById('pt-occupation').value = 'Graphic Designer';
             document.getElementById('pt-diagnosis').value = 'Mixed Anxiety and Depressive Disorder (MADD)';
@@ -4120,18 +4151,22 @@ Prepared by: OT Ezlyana`;
                 appState.sensoryAnswers[i] = (i % 4) + 2;
             }
 
-            // Sample Shah MBI
+            // Sample Shah MBI & Pain Score
             resetShahMbi();
-            updatePainScore(2);
+            appState.mbiTouched = true;
+            updatePainScore(2, true);
 
             selectSubjectiveMood('Mood coherent');
             selectSubjectiveAppearance('Neat and tidy');
+            document.getElementById('soap-s').value = '- Mood: Mood coherent.\n- Appearance: Neat and tidy.\n- Patient attended OT Psychiatry session, alert and cooperative.';
+            document.getElementById('soap-a').value = `- ${SOAP_QUICK_CHIPS.a[0]}\n- ${SOAP_QUICK_CHIPS.a[2]}`;
+            document.getElementById('soap-p').value = `- ${SOAP_QUICK_CHIPS.stg[0]}\n- ${SOAP_QUICK_CHIPS.ltg[0]}\n- ${TREATMENT_BOXES[0].text}\n- ${TREATMENT_BOXES[1].text}\n- ${FUTURE_REVIEW_BOXES[0].text}`;
 
             saveAndSync();
             renderDassQuestions();
             renderInterestChecklist();
             renderSensoryItems();
-            autoPopulateSoap();
+            syncObjectiveAssessments();
             showToast('Sample OT Psychiatry case loaded!', 'bg-heartfelt');
         }
 
@@ -4154,6 +4189,7 @@ Prepared by: OT Ezlyana`;
             document.getElementById('pt-marital').value = '';
             document.getElementById('pt-date').value = new Date().toISOString().split('T')[0];
 
+            appState.dateTouched = false;
             appState.dassAnswers = {};
             appState.interestState = {};
             appState.customInterests = [];
@@ -4172,7 +4208,8 @@ Prepared by: OT Ezlyana`;
             });
 
             resetShahMbi();
-            updatePainScore(0);
+            appState.painTouched = false;
+            updatePainScore(0, false);
             renderDassQuestions();
             renderInterestChecklist();
             renderSensoryItems();
@@ -4181,8 +4218,6 @@ Prepared by: OT Ezlyana`;
             showToast('Forms cleared for new patient.', 'bg-rollerrink');
         }
 
-        // =========================================================================
-        // 16. INITIALIZATION ON PAGE LOAD
         // =========================================================================
         // 16. INITIALIZATION ON PAGE LOAD (IMMEDIATE OR DOMCONTENTLOADED)
         // =========================================================================
@@ -4203,7 +4238,7 @@ Prepared by: OT Ezlyana`;
                 renderSensoryFilterBar();
                 renderSensoryItems();
                 renderShahMbi();
-                updatePainScore(0);
+                updatePainScore(0, false);
                 renderSoapChips();
                 initApplePenCanvasEvents();
                 saveAndSync();
