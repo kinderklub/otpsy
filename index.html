@@ -10,6 +10,9 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
+    <!-- jsPDF for Direct Clinical PDF Extraction -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -928,8 +931,11 @@
                         <button type="button" onclick="copySoapToClipboard()" class="px-4 py-2.5 rounded-2xl bg-summercrush text-white font-bold text-xs sm:text-sm fairy-btn flex items-center gap-1.5 cursor-pointer">
                             <span>📋 Copy SOAP Note</span>
                         </button>
-                        <button type="button" onclick="window.print()" class="px-4 py-2.5 rounded-2xl bg-daffodils text-ink font-bold text-xs sm:text-sm fairy-btn flex items-center gap-1.5 cursor-pointer">
-                            <span>🖨️ Print / PDF</span>
+                        <button type="button" onclick="extractSoapAsPdf()" class="px-4 py-2.5 rounded-2xl bg-daffodils text-ink font-bold text-xs sm:text-sm fairy-btn flex items-center gap-1.5 cursor-pointer">
+                            <span>📄 Extract as PDF</span>
+                        </button>
+                        <button type="button" onclick="saveToGoogleDrive()" class="px-4 py-2.5 rounded-2xl bg-heartfelt text-ink font-bold text-xs sm:text-sm fairy-btn flex items-center gap-1.5 cursor-pointer">
+                            <span>☁️ Save to Google Drive</span>
                         </button>
                     </div>
                 </div>
@@ -1134,12 +1140,18 @@
 
                             <pre id="soap-live-preview" class="whitespace-pre-wrap text-xs sm:text-sm text-ink leading-relaxed font-medium bg-extraglazed p-4 rounded-2xl border border-songbird max-h-[60vh] overflow-y-auto"></pre>
 
-                            <div class="no-print mt-4 grid grid-cols-2 gap-2.5">
-                                <button type="button" onclick="copySoapToClipboard()" class="w-full py-2.5 px-3 rounded-2xl bg-summercrush text-white font-bold text-xs sm:text-sm fairy-btn cursor-pointer">
-                                    📋 Copy Note
-                                </button>
-                                <button type="button" onclick="window.print()" class="w-full py-2.5 px-3 rounded-2xl bg-daffodils text-ink font-bold text-xs sm:text-sm fairy-btn cursor-pointer">
-                                    🖨️ Print / PDF
+                            <div class="no-print mt-4 space-y-2.5">
+                                <div class="grid grid-cols-2 gap-2.5">
+                                    <button type="button" onclick="copySoapToClipboard()" class="w-full py-2.5 px-3 rounded-2xl bg-summercrush text-white font-bold text-xs sm:text-sm fairy-btn cursor-pointer">
+                                        📋 Copy Note
+                                    </button>
+                                    <button type="button" onclick="extractSoapAsPdf()" class="w-full py-2.5 px-3 rounded-2xl bg-daffodils text-ink font-bold text-xs sm:text-sm fairy-btn cursor-pointer">
+                                        📄 Extract as PDF
+                                    </button>
+                                </div>
+                                <button type="button" onclick="saveToGoogleDrive()" class="w-full py-2.5 px-3 rounded-2xl bg-heartfelt hover:bg-heartfelt/90 text-ink font-bold text-xs sm:text-sm fairy-btn flex items-center justify-center gap-1.5 cursor-pointer">
+                                    <span>☁️</span>
+                                    <span>Save to Google Drive</span>
                                 </button>
                             </div>
                         </div>
@@ -1187,6 +1199,9 @@
                 <button type="button" onclick="closeGdriveModal()" class="px-4 py-2.5 rounded-2xl bg-songbird/60 hover:bg-songbird text-ink font-bold text-sm cursor-pointer">
                     Close
                 </button>
+                <a id="gdrive-manual-download" href="#" download="OT_Psychiatry_Report.doc" class="px-4 py-2.5 rounded-2xl bg-heartfelt hover:bg-heartfelt/90 text-ink font-bold text-sm fairy-btn inline-flex items-center gap-1.5">
+                    <span>⬇️ Download .doc</span>
+                </a>
                 <a href="https://drive.google.com/drive/my-drive" target="_blank" rel="noopener noreferrer" onclick="closeGdriveModal()" class="px-5 py-2.5 rounded-2xl bg-summercrush text-white font-bold text-sm fairy-btn inline-flex items-center gap-1.5">
                     <span>Open Google Drive</span>
                     <span>↗</span>
@@ -3070,270 +3085,409 @@
             document.body.removeChild(tempArea);
         }
 
+        function extractSoapAsPdf() {
+            const soapText = buildFormattedSoapText();
+            const cleanName = (appState.patient.name || 'Patient').replace(/[^a-zA-Z0-9_-]/g, '_');
+            const dateStr = appState.patient.date || new Date().toISOString().split('T')[0];
+            const pdfFilename = `OT_Psychiatry_SOAP_${cleanName}_${dateStr}.pdf`;
+
+            try {
+                if (!window.jspdf || !window.jspdf.jsPDF) {
+                    window.print();
+                    return;
+                }
+
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+                const pageWidth = doc.internal.pageSize.getWidth();
+                const pageHeight = doc.internal.pageSize.getHeight();
+                const margin = 15;
+                const maxLineWidth = pageWidth - margin * 2;
+                let y = 16;
+
+                // Header Banner
+                doc.setFillColor(216, 191, 248);
+                doc.roundedRect(margin, 10, maxLineWidth, 16, 3, 3, 'F');
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(13);
+                doc.setTextColor(42, 27, 61);
+                doc.text('OCCUPATIONAL THERAPY PSYCHIATRY CLINICAL NOTE (SOAP)', margin + 4, 17.5);
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(9);
+                doc.text(`OT PsychCare Clinical Suite  •  Date: ${dateStr}`, margin + 4, 23);
+
+                y = 33;
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(10);
+                doc.setTextColor(30, 30, 30);
+
+                const bodyLines = soapText.split('\n').slice(2);
+                bodyLines.forEach(rawLine => {
+                    const isSectionHeader = /^(S \(SUBJECTIVE\):|O \(OBJECTIVE\):|A \(ASSESSMENT\):|P \(PLAN\):)/.test(rawLine.trim());
+                    const isDivider = /^[-=]{10,}$/.test(rawLine.trim());
+
+                    if (isDivider) {
+                        if (y > pageHeight - 18) {
+                            doc.addPage();
+                            y = 16;
+                        }
+                        doc.setDrawColor(192, 155, 240);
+                        doc.line(margin, y, pageWidth - margin, y);
+                        y += 4;
+                        return;
+                    }
+
+                    if (isSectionHeader) {
+                        if (y > pageHeight - 24) {
+                            doc.addPage();
+                            y = 16;
+                        }
+                        y += 2;
+                        doc.setFillColor(245, 214, 35);
+                        doc.roundedRect(margin, y - 4.5, maxLineWidth, 7, 1.5, 1.5, 'F');
+                        doc.setFont('helvetica', 'bold');
+                        doc.setFontSize(10.5);
+                        doc.setTextColor(42, 27, 61);
+                        doc.text(rawLine.trim(), margin + 2.5, y);
+                        y += 6;
+                        doc.setFont('helvetica', 'normal');
+                        doc.setFontSize(10);
+                        doc.setTextColor(30, 30, 30);
+                        return;
+                    }
+
+                    const wrapped = doc.splitTextToSize(rawLine || ' ', maxLineWidth);
+                    wrapped.forEach(line => {
+                        if (y > pageHeight - 16) {
+                            doc.addPage();
+                            y = 16;
+                        }
+                        doc.text(line, margin, y);
+                        y += 5;
+                    });
+                });
+
+                const totalPages = doc.internal.getNumberOfPages();
+                for (let p = 1; p <= totalPages; p++) {
+                    doc.setPage(p);
+                    doc.setFontSize(8.5);
+                    doc.setTextColor(120, 120, 120);
+                    doc.text(`Page ${p} of ${totalPages}`, pageWidth - margin - 18, pageHeight - 8);
+                }
+
+                doc.save(pdfFilename);
+                showToast(`Extracted PDF: ${pdfFilename}`, 'bg-daffodils');
+            } catch (err) {
+                console.warn('PDF generation fallback to print:', err);
+                window.print();
+            }
+        }
+
         // =========================================================================
-        // 10. SAVED RECORDS MANAGER, APP COLLECTOR SYNC & GOOGLE DRIVE EXPORT
+        // 10. GOOGLE DRIVE EXPORT & SAVED RECORDS / APP COLLECTOR SYNC
         // =========================================================================
 
-        const sessionCollectorRecords = [];
+        let lastGdriveBlobUrl = null;
+        let sessionSavedRecords = [];
 
-        function buildCollectorPayload() {
+        function saveToGoogleDrive() {
+            const soapText = buildFormattedSoapText();
+            const cleanName = (appState.patient.name || 'Patient').replace(/[^a-zA-Z0-9_-]/g, '_');
+            const dateStr = appState.patient.date || new Date().toISOString().split('T')[0];
+            const filename = `OT_Psychiatry_Report_${cleanName}_${dateStr}.doc`;
+
+            // Copy formatted note to clipboard as well for quick paste into Google Docs
+            const tempArea = document.createElement('textarea');
+            tempArea.value = soapText;
+            tempArea.style.position = 'fixed';
+            tempArea.style.left = '-9999px';
+            document.body.appendChild(tempArea);
+            tempArea.select();
+            try {
+                document.execCommand('copy');
+            } catch (e) {
+                // Ignore clipboard restriction if any
+            }
+            document.body.removeChild(tempArea);
+
+            // Build Google Docs-compatible HTML document
+            const escapedHtmlBody = soapText
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/\n/g, '<br>');
+
+            const docHtml = `
+                <html xmlns:o='urn:schemas-microsoft-com:office:office'
+                      xmlns:w='urn:schemas-microsoft-com:office:word'
+                      xmlns='http://www.w3.org/TR/REC-html40'>
+                <head><meta charset='utf-8'><title>${filename}</title></head>
+                <body style="font-family: Arial, sans-serif; font-size: 11pt; line-height: 1.5; color: #1f1f1f;">
+                    <div style="border-bottom: 2px solid #7e22ce; padding-bottom: 8px; margin-bottom: 14px;">
+                        <h2 style="margin: 0; color: #2A1B3D;">OT PsychCare • Psychiatry Clinical Assessment &amp; SOAP Report</h2>
+                        <p style="margin: 4px 0 0 0; font-size: 9.5pt; color: #555;">Clinician: OT Lya | Generated: ${dateStr}</p>
+                    </div>
+                    <div>${escapedHtmlBody}</div>
+                </body>
+                </html>
+            `;
+
+            try {
+                if (lastGdriveBlobUrl) {
+                    URL.revokeObjectURL(lastGdriveBlobUrl);
+                }
+                const blob = new Blob(['\ufeff', docHtml], { type: 'application/msword;charset=utf-8' });
+                lastGdriveBlobUrl = URL.createObjectURL(blob);
+
+                const manualLink = document.getElementById('gdrive-manual-download');
+                if (manualLink) {
+                    manualLink.href = lastGdriveBlobUrl;
+                    manualLink.download = filename;
+                }
+
+                const autoLink = document.createElement('a');
+                autoLink.href = lastGdriveBlobUrl;
+                autoLink.download = filename;
+                document.body.appendChild(autoLink);
+                autoLink.click();
+                document.body.removeChild(autoLink);
+            } catch (err) {
+                console.warn('Google Drive doc download error:', err);
+            }
+
+            const filenameEl = document.getElementById('gdrive-filename');
+            if (filenameEl) filenameEl.textContent = filename;
+
+            const modal = document.getElementById('gdrive-modal');
+            if (modal) {
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+            }
+            showToast('Clinical .doc prepared & copied for Google Drive!', 'bg-heartfelt');
+        }
+
+        function closeGdriveModal() {
+            const modal = document.getElementById('gdrive-modal');
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }
+        }
+
+        function buildCollectorRecordPayload() {
+            saveAndSync();
             const dass = calculateDassTotals();
-            const interests = getInterestSummaryLists();
             const sensory = calculateSensoryTotals();
             const mbiCat = getMbiCategory(appState.mbiScore);
             const painInfo = getPainDetails(appState.painScore);
-            const formattedNote = buildFormattedSoapText();
 
             return {
-                collectorSchema: 'OT_APP_COLLECTOR_V1',
                 specialty: 'Psychiatry',
-                clinician: 'OT Ezlyana',
+                clinician: 'OT Lya',
                 savedAt: new Date().toISOString(),
                 patient: { ...appState.patient },
-                assessments: {
-                    dass21: {
-                        answers: { ...appState.dass },
-                        depression: dass.d,
-                        depressionSeverity: dass.dSev.label,
-                        anxiety: dass.a,
-                        anxietySeverity: dass.aSev.label,
-                        stress: dass.s,
-                        stressSeverity: dass.sSev.label,
-                        answeredCount: dass.answeredCount
-                    },
-                    interestChecklist: {
-                        raw: JSON.parse(JSON.stringify(appState.interests)),
-                        customInterests: [...appState.customInterests],
-                        summary: interests
-                    },
-                    adultSensoryProfile: {
-                        answers: { ...appState.sensory },
-                        totalAnswered: sensory.totalAnswered,
-                        quadrants: {
-                            lowRegistration: { score: sensory.sums.lowreg, status: sensory.classifications.lowreg.label },
-                            sensationSeeking: { score: sensory.sums.seeking, status: sensory.classifications.seeking.label },
-                            sensorySensitivity: { score: sensory.sums.sensitivity, status: sensory.classifications.sensitivity.label },
-                            sensationAvoiding: { score: sensory.sums.avoiding, status: sensory.classifications.avoiding.label }
-                        }
-                    },
-                    shahMbi: {
-                        totalScore: appState.mbiScore,
-                        category: mbiCat.label,
-                        items: [...appState.mbiItems]
-                    },
-                    painScore: {
-                        score: appState.painScore,
-                        label: painInfo.label
-                    }
+                dass: { ...appState.dass },
+                dassSummary: {
+                    depression: `${dass.d} (${dass.dSev.label})`,
+                    anxiety: `${dass.a} (${dass.aSev.label})`,
+                    stress: `${dass.s} (${dass.sSev.label})`
                 },
-                soapNotes: {
-                    ...appState.soap,
-                    subjectiveMood: appState.subjectiveMood,
-                    subjectiveAppearance: appState.subjectiveAppearance
+                interests: JSON.parse(JSON.stringify(appState.interests)),
+                customInterests: [...appState.customInterests],
+                sensory: { ...appState.sensory },
+                sensorySummary: {
+                    answered: sensory.totalAnswered,
+                    lowreg: `${sensory.sums.lowreg}/75 (${sensory.classifications.lowreg.label})`,
+                    seeking: `${sensory.sums.seeking}/75 (${sensory.classifications.seeking.label})`,
+                    sensitivity: `${sensory.sums.sensitivity}/75 (${sensory.classifications.sensitivity.label})`,
+                    avoiding: `${sensory.sums.avoiding}/75 (${sensory.classifications.avoiding.label})`
                 },
-                formattedSoapText: formattedNote
+                mbiScore: appState.mbiScore,
+                mbiItems: [...appState.mbiItems],
+                mbiCategory: mbiCat.label,
+                painScore: appState.painScore,
+                painLabel: painInfo.label,
+                subjectiveMood: appState.subjectiveMood,
+                subjectiveAppearance: appState.subjectiveAppearance,
+                soap: {
+                    s: document.getElementById('soap-s').value,
+                    o: document.getElementById('soap-o').value,
+                    a: document.getElementById('soap-a').value,
+                    p: document.getElementById('soap-p').value
+                },
+                compiledSoapText: buildFormattedSoapText()
             };
         }
 
-        function getMergedSavedRecords() {
+        function getAllAvailableRecords() {
             const cloudList = Array.isArray(window.cloudSavedRecords) ? window.cloudSavedRecords : [];
-            const combined = [...cloudList];
-
-            sessionCollectorRecords.forEach((localRec, localIdx) => {
-                const alreadyInCloud = combined.some(c =>
-                    (localRec.id && c.id === localRec.id) ||
-                    (c.savedAt === localRec.savedAt && (c.patient?.name || '') === (localRec.patient?.name || ''))
-                );
-                if (!alreadyInCloud) {
-                    combined.push({ ...localRec, _localIndex: localIdx, _source: 'session' });
-                }
+            const combined = [...cloudList, ...sessionSavedRecords];
+            const seen = new Set();
+            return combined.filter(rec => {
+                const key = rec.id || `${rec.patient?.name}_${rec.savedAt}`;
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
             });
-
-            return combined.sort((a, b) => (b.savedAt || '').localeCompare(a.savedAt || ''));
         }
 
         function refreshSavedRecordsBadge() {
-            const total = getMergedSavedRecords().length;
-            const navBadge = document.getElementById('saved-records-count-badge');
-            if (navBadge) navBadge.textContent = total;
+            const all = getAllAvailableRecords();
+            const badge = document.getElementById('saved-records-count-badge');
+            if (badge) badge.textContent = all.length;
             const modalBadge = document.getElementById('saved-records-modal-count');
-            if (modalBadge) modalBadge.textContent = `${total} ${total === 1 ? 'Record' : 'Records'}`;
-        }
-        window.refreshSavedRecordsBadge = refreshSavedRecordsBadge;
-
-        async function saveCurrentRecordQuick() {
-            const payload = buildCollectorPayload();
-            payload._localId = 'local-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
-            sessionCollectorRecords.unshift(payload);
-
-            let cloudSaved = false;
-            if (window.otCollectorCloud) {
-                try {
-                    const docId = await window.otCollectorCloud.saveRecord(payload);
-                    if (docId) {
-                        payload.id = docId;
-                        cloudSaved = true;
-                        await window.otCollectorCloud.fetchRecords();
-                    }
-                } catch (err) {
-                    console.warn('Cloud quick save fallback:', err.message);
-                }
-            }
-
-            refreshSavedRecordsBadge();
-            renderSavedRecordsList();
-            showToast(
-                cloudSaved
-                    ? `Saved "${payload.patient.name || 'Patient'}" to Cloud & Saved Records!`
-                    : `Saved "${payload.patient.name || 'Patient'}" to Saved Records!`,
-                'bg-heartfelt'
-            );
+            if (modalBadge) modalBadge.textContent = `${all.length} Record${all.length === 1 ? '' : 's'}`;
         }
 
         async function syncAndSaveToAppCollector() {
-            const payload = buildCollectorPayload();
-            const statusBadge = document.getElementById('collector-sync-status');
+            const payload = buildCollectorRecordPayload();
+            const statusEl = document.getElementById('collector-sync-status');
+            if (statusEl) statusEl.textContent = 'Syncing...';
 
             try {
-                if (window.parent && window.parent !== window) {
-                    window.parent.postMessage({
-                        type: 'OT_APP_COLLECTOR_SAVE',
-                        specialty: 'Psychiatry',
-                        payload: payload
-                    }, '*');
-                }
-                if (window.opener) {
-                    window.opener.postMessage({
-                        type: 'OT_APP_COLLECTOR_SAVE',
-                        specialty: 'Psychiatry',
-                        payload: payload
-                    }, '*');
+                if (window.otCollectorCloud) {
+                    const cloudId = await window.otCollectorCloud.saveRecord(payload);
+                    if (cloudId) {
+                        payload.id = cloudId;
+                        payload._source = 'cloud';
+                    }
                 }
             } catch (e) {
-                console.warn('Cross-window collector message skipped:', e.message);
+                console.warn('Cloud save fallback:', e.message);
             }
 
-            payload._localId = 'local-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
-            sessionCollectorRecords.unshift(payload);
+            if (!payload.id) {
+                payload.id = `local_${Date.now()}`;
+                payload._source = 'session';
+                sessionSavedRecords.unshift(payload);
+            }
 
-            let cloudSaved = false;
-            if (window.otCollectorCloud) {
-                try {
-                    const docId = await window.otCollectorCloud.saveRecord(payload);
-                    if (docId) {
-                        payload.id = docId;
-                        cloudSaved = true;
-                        await window.otCollectorCloud.fetchRecords();
-                    }
-                } catch (err) {
-                    console.warn('Cloud sync fallback:', err.message);
+            // Broadcast to parent App Collector window if embedded in hub
+            try {
+                if (window.parent && window.parent !== window) {
+                    window.parent.postMessage({ type: 'OT_COLLECTOR_SAVE', payload }, '*');
                 }
+            } catch (e) {
+                // Ignore cross-origin postMessage restriction
             }
 
+            // Download portable JSON record for office PC App Collector retrieval
+            const cleanName = (payload.patient.name || 'Patient').replace(/[^a-zA-Z0-9_-]/g, '_');
+            const dateStr = payload.patient.date || new Date().toISOString().split('T')[0];
+            const jsonFilename = `OT_Psychiatry_Collector_${cleanName}_${dateStr}.json`;
+            try {
+                const jsonBlob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(jsonBlob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = jsonFilename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            } catch (e) {
+                console.warn('JSON export skipped:', e.message);
+            }
+
+            if (statusEl) statusEl.textContent = 'Synced ✓';
             refreshSavedRecordsBadge();
-
-            const cleanName = (appState.patient.name || 'Patient').replace(/[^a-zA-Z0-9_-]/g, '_');
-            const dateStr = appState.patient.date || new Date().toISOString().split('T')[0];
-            const filename = `OT_Collector_Psychiatry_${cleanName}_${dateStr}.json`;
-
-            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-
-            statusBadge.textContent = cloudSaved
-                ? `Synced to Cloud & Saved Records (${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`
-                : `Saved to Records & Exported (${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`;
-            statusBadge.className = 'px-2.5 py-0.5 rounded-full bg-heartfelt text-ink text-xs font-bold';
-
-            showToast('Saved to Saved Records & App Collector!', 'bg-allthat');
+            showToast(`Saved & synced ${payload.patient.name || 'Patient'} to App Collector!`, 'bg-allthat');
         }
 
-        function openSavedRecordsModal() {
-            openCollectorRetrieveModal();
-        }
-
-        async function openCollectorRetrieveModal() {
-            const modal = document.getElementById('collector-modal');
-            const listEl = document.getElementById('collector-records-list');
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
-            listEl.innerHTML = '<p class="text-sm text-ink/70 text-center py-6">Loading saved records...</p>';
-
-            if (window.otCollectorCloud) {
-                try {
-                    await window.otCollectorCloud.fetchRecords();
-                } catch (e) {
-                    console.warn('Could not fetch cloud collector records:', e.message);
+        async function saveCurrentRecordQuick() {
+            const payload = buildCollectorRecordPayload();
+            try {
+                if (window.otCollectorCloud) {
+                    const cloudId = await window.otCollectorCloud.saveRecord(payload);
+                    if (cloudId) {
+                        payload.id = cloudId;
+                        payload._source = 'cloud';
+                    }
                 }
+            } catch (e) {
+                console.warn('Quick cloud save fallback:', e.message);
+            }
+
+            if (!payload.id) {
+                payload.id = `local_${Date.now()}`;
+                payload._source = 'session';
+                sessionSavedRecords.unshift(payload);
             }
 
             refreshSavedRecordsBadge();
             renderSavedRecordsList();
+            showToast(`Saved record for ${payload.patient.name || 'Unnamed Patient'}!`, 'bg-heartfelt');
+        }
+
+        async function openSavedRecordsModal() {
+            const modal = document.getElementById('collector-modal');
+            if (modal) {
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+            }
+            const listEl = document.getElementById('collector-records-list');
+            if (listEl) {
+                listEl.innerHTML = '<p class="text-sm text-ink/70 text-center py-6">Loading saved records...</p>';
+            }
+            if (window.otCollectorCloud) {
+                await window.otCollectorCloud.fetchRecords();
+            }
+            refreshSavedRecordsBadge();
+            renderSavedRecordsList();
+        }
+
+        function openCollectorRetrieveModal() {
+            openSavedRecordsModal();
+        }
+
+        function closeCollectorModal() {
+            const modal = document.getElementById('collector-modal');
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }
         }
 
         function renderSavedRecordsList() {
             const listEl = document.getElementById('collector-records-list');
             if (!listEl) return;
-
-            const combined = getMergedSavedRecords();
-            window._cachedCollectorList = combined;
+            const records = getAllAvailableRecords();
             refreshSavedRecordsBadge();
 
-            if (combined.length === 0) {
+            if (records.length === 0) {
                 listEl.innerHTML = `
-                    <div class="p-6 rounded-2xl bg-white border-2 border-dashed border-songbird text-center space-y-1.5">
-                        <p class="text-base font-bold text-ink">No saved patient records yet.</p>
-                        <p class="text-xs text-ink/70">Tap <strong>Save Current Patient</strong> above (or <strong>Sync & Save to App Collector</strong> in SOAP Notes) to save a patient record.</p>
+                    <div class="p-6 rounded-2xl bg-white border-2 border-dashed border-songbird text-center space-y-1">
+                        <p class="text-sm font-bold text-ink">No saved patient records yet.</p>
+                        <p class="text-xs text-ink/70">Tap "Save Current Patient" above or import a .json record from your office PC.</p>
                     </div>
                 `;
                 return;
             }
 
-            listEl.innerHTML = combined.map((rec, idx) => {
-                const ptName = rec.patient?.name || 'Unnamed Patient';
-                const mrn = rec.patient?.mrn ? `MRN: ${rec.patient.mrn}` : '';
-                const ic = rec.patient?.ic ? `IC: ${rec.patient.ic}` : '';
-                const idMeta = [mrn, ic].filter(Boolean).join(' • ');
-                const dx = rec.patient?.diagnosis || 'No diagnosis recorded';
-                const dt = rec.patient?.date || (rec.savedAt ? rec.savedAt.split('T')[0] : '');
-
-                const dassInfo = rec.assessments?.dass21
-                    ? `DASS: D=${rec.assessments.dass21.depression ?? 0}, A=${rec.assessments.dass21.anxiety ?? 0}, S=${rec.assessments.dass21.stress ?? 0}`
-                    : '';
-                const mbiInfo = rec.assessments?.shahMbi ? `MBI: ${rec.assessments.shahMbi.totalScore ?? 100}/100` : '';
-                const painInfo = rec.assessments?.painScore ? `Pain: ${rec.assessments.painScore.score ?? 0}/10` : '';
-                const sourceTag = rec.id
-                    ? '<span class="px-2 py-0.5 rounded-lg bg-starrynight/60 text-ink text-[11px] font-bold">☁️ Cloud Saved</span>'
-                    : '<span class="px-2 py-0.5 rounded-lg bg-songbird/60 text-ink text-[11px] font-bold">💾 Session Saved</span>';
-
+            listEl.innerHTML = records.map(rec => {
+                const pt = rec.patient || {};
+                const savedDate = rec.savedAt ? new Date(rec.savedAt).toLocaleString() : 'Recent';
+                const safeId = String(rec.id).replace(/'/g, "\\'");
                 return `
-                    <div class="p-4 rounded-2xl bg-white border-2 border-songbird hover:border-allthat transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div class="p-4 rounded-2xl bg-white border-2 border-songbird flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div class="space-y-1">
                             <div class="flex flex-wrap items-center gap-1.5">
-                                ${sourceTag}
-                                <span class="text-xs font-semibold text-ink/65">${dt}</span>
-                                ${idMeta ? `<span class="text-xs font-bold text-ink/75">• ${idMeta}</span>` : ''}
+                                <span class="text-base font-bold text-ink">${pt.name || 'Unnamed Patient'}</span>
+                                ${pt.mrn ? `<span class="px-2 py-0.5 rounded-lg bg-songbird/60 text-ink text-xs font-bold">${pt.mrn}</span>` : ''}
+                                ${pt.ic ? `<span class="px-2 py-0.5 rounded-lg bg-extraglazed border border-songbird text-ink/75 text-xs font-semibold">${pt.ic}</span>` : ''}
                             </div>
-                            <p class="text-base sm:text-lg font-bold text-ink leading-tight">${ptName}</p>
-                            <p class="text-xs text-ink/80 font-medium">${dx}</p>
-                            <div class="flex flex-wrap gap-1.5 pt-1">
-                                ${dassInfo ? `<span class="px-2 py-0.5 rounded-lg bg-daffodils/40 text-ink text-[11px] font-bold">${dassInfo}</span>` : ''}
-                                ${mbiInfo ? `<span class="px-2 py-0.5 rounded-lg bg-heartfelt/50 text-ink text-[11px] font-bold">${mbiInfo}</span>` : ''}
-                                ${painInfo ? `<span class="px-2 py-0.5 rounded-lg bg-candy/50 text-ink text-[11px] font-bold">${painInfo}</span>` : ''}
+                            <p class="text-xs text-ink/80 font-medium">${pt.diagnosis || 'No diagnosis recorded'}</p>
+                            <div class="flex flex-wrap gap-1.5 pt-0.5">
+                                <span class="px-2 py-0.5 rounded-md bg-daffodils/40 text-ink text-[11px] font-bold">MBI: ${rec.mbiScore ?? 100}/100</span>
+                                <span class="px-2 py-0.5 rounded-md bg-candy/50 text-ink text-[11px] font-bold">Pain: ${rec.painScore ?? 0}/10</span>
+                                <span class="px-2 py-0.5 rounded-md bg-starrynight/30 text-ink/75 text-[11px] font-semibold">Saved: ${savedDate}</span>
                             </div>
                         </div>
-
-                        <div class="flex sm:flex-col gap-2 shrink-0">
-                            <button type="button" onclick="loadSessionCollectorRecord(${idx})" class="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-summercrush hover:bg-summercrush/90 text-white text-xs font-bold fairy-btn cursor-pointer">
+                        <div class="flex items-center gap-2 shrink-0">
+                            <button type="button" onclick="loadSavedRecordById('${safeId}')" class="px-4 py-2 rounded-xl bg-starrynight hover:bg-starrynight/90 text-ink font-bold text-xs fairy-btn cursor-pointer">
                                 ✨ Open & Auto-Fill
                             </button>
-                            <button type="button" onclick="confirmDeleteSingleRecord(${idx})" class="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-rollerrink/75 hover:bg-rollerrink text-ink text-xs font-bold fairy-btn cursor-pointer">
+                            <button type="button" onclick="deleteSavedRecordById('${safeId}')" class="px-3 py-2 rounded-xl bg-rollerrink/80 hover:bg-rollerrink text-ink font-bold text-xs fairy-btn cursor-pointer">
                                 🗑️ Delete
                             </button>
                         </div>
@@ -3341,138 +3495,39 @@
                 `;
             }).join('');
         }
-        window.renderSavedRecordsList = renderSavedRecordsList;
 
-        function confirmDeleteSingleRecord(index) {
-            const list = window._cachedCollectorList || [];
-            const rec = list[index];
+        function applyRecordObjectToApp(rec) {
             if (!rec) return;
-
-            const ptName = rec.patient?.name || 'this patient';
-            openModal(
-                'Delete Saved Record?',
-                `Are you sure you want to permanently delete the saved record for "${ptName}"? This will free up storage space.`,
-                async () => {
-                    if (rec.id && window.otCollectorCloud) {
-                        try {
-                            await window.otCollectorCloud.deleteRecord(rec.id);
-                        } catch (err) {
-                            console.warn('Cloud delete error:', err.message);
-                        }
-                    }
-
-                    const localIdx = sessionCollectorRecords.findIndex(item =>
-                        (rec.id && item.id === rec.id) ||
-                        (rec._localId && item._localId === rec._localId) ||
-                        (item.savedAt === rec.savedAt && (item.patient?.name || '') === (rec.patient?.name || ''))
-                    );
-                    if (localIdx !== -1) {
-                        sessionCollectorRecords.splice(localIdx, 1);
-                    }
-
-                    if (Array.isArray(window.cloudSavedRecords) && rec.id) {
-                        window.cloudSavedRecords = window.cloudSavedRecords.filter(c => c.id !== rec.id);
-                    }
-
-                    refreshSavedRecordsBadge();
-                    renderSavedRecordsList();
-                    showToast(`Deleted record for "${ptName}".`, 'bg-rollerrink');
-                }
-            );
-        }
-
-        function confirmDeleteAllRecords() {
-            const combined = getMergedSavedRecords();
-            if (combined.length === 0) {
-                showToast('There are no saved records to delete.', 'bg-songbird');
-                return;
-            }
-
-            openModal(
-                'Delete ALL Saved Records?',
-                `This will permanently delete all ${combined.length} saved Psychiatry record(s) from your cloud database and current session so your storage does not get full. Continue?`,
-                async () => {
-                    if (window.otCollectorCloud) {
-                        try {
-                            await window.otCollectorCloud.deleteAllRecords();
-                        } catch (err) {
-                            console.warn('Cloud delete-all error:', err.message);
-                        }
-                    }
-
-                    sessionCollectorRecords.length = 0;
-                    window.cloudSavedRecords = [];
-                    refreshSavedRecordsBadge();
-                    renderSavedRecordsList();
-                    showToast('All saved records have been deleted!', 'bg-rollerrink');
-                }
-            );
-        }
-
-        function loadSessionCollectorRecord(index) {
-            const list = window._cachedCollectorList || [];
-            if (!list[index]) return;
-            restoreCollectorRecord(list[index]);
-            closeCollectorModal();
-        }
-
-        function handleCollectorFileUpload(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                try {
-                    const parsed = JSON.parse(e.target.result);
-                    const record = parsed.payload ? parsed.payload : parsed;
-                    restoreCollectorRecord(record);
-                    closeCollectorModal();
-                } catch (err) {
-                    showToast('Invalid App Collector JSON file.', 'bg-rollerrink');
-                }
+            appState.patient = {
+                name: rec.patient?.name || '',
+                ic: rec.patient?.ic || '',
+                mrn: rec.patient?.mrn || '',
+                age: rec.patient?.age || '',
+                gender: rec.patient?.gender || '',
+                date: rec.patient?.date || new Date().toISOString().split('T')[0],
+                marital: rec.patient?.marital || '',
+                occupation: rec.patient?.occupation || '',
+                diagnosis: rec.patient?.diagnosis || '',
+                meds: rec.patient?.meds || '',
+                social: rec.patient?.social || ''
             };
-            reader.readAsText(file);
-            event.target.value = '';
-        }
-
-        function restoreCollectorRecord(record) {
-            if (!record || !record.patient) {
-                showToast('Record format not recognized.', 'bg-rollerrink');
-                return;
-            }
-
-            appState.patient = { ...appState.patient, ...record.patient };
-            appState.dass = record.assessments?.dass21?.answers || {};
-            appState.interests = record.assessments?.interestChecklist?.raw || {};
-            appState.customInterests = record.assessments?.interestChecklist?.customInterests || [];
-            appState.sensory = record.assessments?.adultSensoryProfile?.answers || {};
-
-            if (record.assessments?.shahMbi) {
-                appState.mbiScore = record.assessments.shahMbi.totalScore ?? 100;
-                if (Array.isArray(record.assessments.shahMbi.items) && record.assessments.shahMbi.items.length === 10) {
-                    appState.mbiItems = [...record.assessments.shahMbi.items];
-                }
-            }
-            if (record.assessments?.painScore) {
-                appState.painScore = record.assessments.painScore.score ?? 0;
-            }
-
+            appState.dass = { ...(rec.dass || {}) };
+            appState.interests = JSON.parse(JSON.stringify(rec.interests || {}));
+            appState.customInterests = [...(rec.customInterests || [])];
+            appState.sensory = { ...(rec.sensory || {}) };
+            appState.mbiItems = Array.isArray(rec.mbiItems) && rec.mbiItems.length === 10
+                ? [...rec.mbiItems]
+                : [5, 5, 10, 10, 10, 10, 10, 10, 15, 15];
+            appState.mbiScore = typeof rec.mbiScore === 'number' ? rec.mbiScore : 100;
+            appState.painScore = typeof rec.painScore === 'number' ? rec.painScore : 0;
+            appState.subjectiveMood = rec.subjectiveMood || '';
+            appState.subjectiveAppearance = rec.subjectiveAppearance || '';
             appState.soap = {
-                s: record.soapNotes?.s || '',
-                o: record.soapNotes?.o || '',
-                a: record.soapNotes?.a || '',
-                p: record.soapNotes?.p || ''
+                s: rec.soap?.s || '',
+                o: rec.soap?.o || '',
+                a: rec.soap?.a || '',
+                p: rec.soap?.p || ''
             };
-            appState.subjectiveMood = record.soapNotes?.subjectiveMood || '';
-            appState.subjectiveAppearance = record.soapNotes?.subjectiveAppearance || '';
-
-            appState.defaultInputs['pt-name'] = appState.patient.name || appState.defaultInputs['pt-name'];
-            appState.defaultInputs['pt-ic'] = appState.patient.ic || appState.defaultInputs['pt-ic'];
-            appState.defaultInputs['pt-mrn'] = appState.patient.mrn || appState.defaultInputs['pt-mrn'];
-            appState.defaultInputs['pt-age'] = appState.patient.age || appState.defaultInputs['pt-age'];
-            appState.defaultInputs['pt-occupation'] = appState.patient.occupation || appState.defaultInputs['pt-occupation'];
-            appState.defaultInputs['pt-diagnosis'] = appState.patient.diagnosis || appState.defaultInputs['pt-diagnosis'];
-            appState.defaultInputs['pt-meds'] = appState.patient.meds || appState.defaultInputs['pt-meds'];
-            appState.defaultInputs['pt-social'] = appState.patient.social || appState.defaultInputs['pt-social'];
 
             populateAllInputsFromState();
             renderDassQuestions();
@@ -3486,71 +3541,76 @@
             updatePainScore(appState.painScore, true);
             updateHeaderPatientBadge();
             updateSoapPreview();
-            showToast(`Retrieved record for ${appState.patient.name || 'Patient'}!`, 'bg-starrynight');
         }
 
-        function closeCollectorModal() {
-            const modal = document.getElementById('collector-modal');
-            modal.classList.add('hidden');
-            modal.classList.remove('flex');
-        }
-
-        function saveToGoogleDrive() {
-            const soapText = buildFormattedSoapText();
-            copySoapToClipboard();
-
-            const cleanName = (appState.patient.name || 'Patient').replace(/[^a-zA-Z0-9_-]/g, '_');
-            const dateStr = appState.patient.date || new Date().toISOString().split('T')[0];
-            const docFilename = `OT_Psychiatry_SOAP_${cleanName}_${dateStr}.doc`;
-
-            const htmlDocContent = `
-                <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-                <head><meta charset='utf-8'><title>OT Psychiatry SOAP Note</title></head>
-                <body style="font-family: Calibri, Arial, sans-serif; line-height: 1.5; color: #1f1f1f;">
-                    <h2 style="color: #6B21A8;">OCCUPATIONAL THERAPY PSYCHIATRY CLINICAL NOTE (SOAP)</h2>
-                    <pre style="font-family: Calibri, Arial, sans-serif; white-space: pre-wrap; font-size: 11pt;">${soapText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
-                </body>
-                </html>
-            `;
-
-            const blob = new Blob(['\ufeff', htmlDocContent], { type: 'application/msword' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = docFilename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-
-            document.getElementById('gdrive-filename').textContent = docFilename;
-            const modal = document.getElementById('gdrive-modal');
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
-        }
-
-        function closeGdriveModal() {
-            const modal = document.getElementById('gdrive-modal');
-            modal.classList.add('hidden');
-            modal.classList.remove('flex');
-        }
-
-        window.addEventListener('message', (event) => {
-            if (!event.data || typeof event.data !== 'object') return;
-            if (event.data.type === 'OT_APP_COLLECTOR_LOAD_RECORD' && event.data.payload) {
-                restoreCollectorRecord(event.data.payload);
+        function loadSavedRecordById(recordId) {
+            const rec = getAllAvailableRecords().find(r => String(r.id) === String(recordId));
+            if (!rec) {
+                showToast('Record not found.', 'bg-rollerrink');
+                return;
             }
-            if (event.data.type === 'OT_APP_COLLECTOR_REQUEST_SYNC') {
-                syncAndSaveToAppCollector();
+            applyRecordObjectToApp(rec);
+            closeCollectorModal();
+            showToast(`Loaded & auto-filled record for ${rec.patient?.name || 'Patient'}!`, 'bg-starrynight');
+        }
+
+        async function deleteSavedRecordById(recordId) {
+            sessionSavedRecords = sessionSavedRecords.filter(r => String(r.id) !== String(recordId));
+            if (window.otCollectorCloud && !String(recordId).startsWith('local_')) {
+                await window.otCollectorCloud.deleteRecord(recordId);
             }
-        });
+            if (Array.isArray(window.cloudSavedRecords)) {
+                window.cloudSavedRecords = window.cloudSavedRecords.filter(r => String(r.id) !== String(recordId));
+            }
+            refreshSavedRecordsBadge();
+            renderSavedRecordsList();
+            showToast('Record deleted.', 'bg-rollerrink');
+        }
+
+        function confirmDeleteAllRecords() {
+            openModal(
+                'Delete All Saved Records?',
+                'This will permanently remove all saved Psychiatry patient records from cloud and session storage.',
+                async () => {
+                    sessionSavedRecords = [];
+                    if (window.otCollectorCloud) {
+                        await window.otCollectorCloud.deleteAllRecords();
+                    }
+                    refreshSavedRecordsBadge();
+                    renderSavedRecordsList();
+                    showToast('All saved records deleted.', 'bg-rollerrink');
+                }
+            );
+        }
+
+        function handleCollectorFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const parsed = JSON.parse(e.target.result);
+                    const record = parsed.payload ? parsed.payload : parsed;
+                    if (!record.id) record.id = `local_${Date.now()}`;
+                    sessionSavedRecords.unshift(record);
+                    applyRecordObjectToApp(record);
+                    refreshSavedRecordsBadge();
+                    closeCollectorModal();
+                    showToast(`Imported & auto-filled ${record.patient?.name || 'Patient'}!`, 'bg-heartfelt');
+                } catch (err) {
+                    showToast('Invalid .json collector file.', 'bg-rollerrink');
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = '';
+        }
 
         // =========================================================================
-        // 11. APPLE PENCIL / HANDWRITING-TO-TEXT SCRIBBLE PAD
+        // 11. WRITE USING APPLE PEN (HANDWRITING CANVAS & RECOGNITION)
         // =========================================================================
 
         let applePenState = {
-            targetElementId: null,
+            targetElementId: '',
             targetLabel: '',
             penColor: '#2A1B3D',
             penSize: 4,
@@ -3563,182 +3623,130 @@
         function initApplePenCanvas() {
             const canvas = document.getElementById('apple-pen-canvas');
             if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+
+            const getPos = (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                return {
+                    x: (e.clientX - rect.left) * scaleX,
+                    y: (e.clientY - rect.top) * scaleY,
+                    pressure: e.pressure && e.pressure > 0 ? e.pressure : 0.5
+                };
+            };
 
             canvas.addEventListener('pointerdown', (e) => {
                 e.preventDefault();
                 canvas.setPointerCapture(e.pointerId);
-                const rect = canvas.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-                const pressure = e.pointerType === 'pen' && e.pressure > 0 ? e.pressure : 0.5;
-
                 applePenState.isDrawing = true;
+                const pos = getPos(e);
                 applePenState.currentStroke = {
-                    color: applePenState.penColor,
-                    size: applePenState.penSize,
+                    color: applePenState.isEraser ? '#FFFDF7' : applePenState.penColor,
+                    size: applePenState.isEraser ? 20 : applePenState.penSize,
                     isEraser: applePenState.isEraser,
-                    points: [{ x, y, pressure }]
+                    points: [pos]
                 };
-
-                const placeholder = document.getElementById('apple-pen-placeholder');
-                if (placeholder) placeholder.classList.add('hidden');
+                document.getElementById('apple-pen-placeholder').classList.add('hidden');
             });
 
             canvas.addEventListener('pointermove', (e) => {
                 if (!applePenState.isDrawing || !applePenState.currentStroke) return;
                 e.preventDefault();
-                const rect = canvas.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-                const pressure = e.pointerType === 'pen' && e.pressure > 0 ? e.pressure : 0.5;
+                const pos = getPos(e);
+                const pts = applePenState.currentStroke.points;
+                const prev = pts[pts.length - 1];
+                pts.push(pos);
 
-                applePenState.currentStroke.points.push({ x, y, pressure });
-                redrawApplePenCanvas();
+                ctx.save();
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.strokeStyle = applePenState.currentStroke.color;
+                ctx.lineWidth = applePenState.currentStroke.isEraser
+                    ? 20
+                    : Math.max(2, applePenState.currentStroke.size * (0.7 + pos.pressure * 0.6));
+                ctx.beginPath();
+                ctx.moveTo(prev.x, prev.y);
+                ctx.lineTo(pos.x, pos.y);
+                ctx.stroke();
+                ctx.restore();
             });
 
-            const endStroke = (e) => {
-                if (!applePenState.isDrawing) return;
-                if (e && e.pointerId !== undefined && canvas.hasPointerCapture(e.pointerId)) {
-                    canvas.releasePointerCapture(e.pointerId);
-                }
-                if (applePenState.currentStroke && applePenState.currentStroke.points.length > 0) {
+            const endStroke = () => {
+                if (applePenState.isDrawing && applePenState.currentStroke) {
                     applePenState.strokes.push(applePenState.currentStroke);
+                    applePenState.currentStroke = null;
                 }
                 applePenState.isDrawing = false;
-                applePenState.currentStroke = null;
-                redrawApplePenCanvas();
             };
 
             canvas.addEventListener('pointerup', endStroke);
             canvas.addEventListener('pointercancel', endStroke);
-
-            window.addEventListener('resize', () => {
-                const modal = document.getElementById('apple-pen-modal');
-                if (modal && !modal.classList.contains('hidden')) {
-                    resizeApplePenCanvas();
-                    redrawApplePenCanvas();
-                }
-            });
-        }
-
-        function resizeApplePenCanvas() {
-            const canvas = document.getElementById('apple-pen-canvas');
-            if (!canvas) return;
-            const parent = canvas.parentElement;
-            const dpr = window.devicePixelRatio || 1;
-            const width = parent.clientWidth || 640;
-            const height = parent.clientHeight || 250;
-
-            canvas.width = Math.round(width * dpr);
-            canvas.height = Math.round(height * dpr);
-            const ctx = canvas.getContext('2d');
-            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         }
 
         function redrawApplePenCanvas() {
             const canvas = document.getElementById('apple-pen-canvas');
             if (!canvas) return;
             const ctx = canvas.getContext('2d');
-            const rect = canvas.getBoundingClientRect();
-            ctx.clearRect(0, 0, rect.width, rect.height);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            const allStrokes = applePenState.currentStroke
-                ? [...applePenState.strokes, applePenState.currentStroke]
-                : applePenState.strokes;
-
-            allStrokes.forEach(stroke => {
-                if (!stroke.points || stroke.points.length === 0) return;
+            applePenState.strokes.forEach(stroke => {
+                if (!stroke.points || stroke.points.length < 2) return;
                 ctx.save();
                 ctx.lineCap = 'round';
                 ctx.lineJoin = 'round';
-
-                if (stroke.isEraser) {
-                    ctx.globalCompositeOperation = 'destination-out';
-                    ctx.strokeStyle = 'rgba(0,0,0,1)';
-                    ctx.lineWidth = stroke.size * 3.5;
-                } else {
-                    ctx.globalCompositeOperation = 'source-over';
-                    ctx.strokeStyle = stroke.color;
-                }
-
-                if (stroke.points.length === 1) {
-                    const pt = stroke.points[0];
-                    const radius = stroke.isEraser ? stroke.size * 1.8 : (stroke.size * (0.6 + pt.pressure * 0.8)) / 2;
+                ctx.strokeStyle = stroke.color;
+                for (let i = 1; i < stroke.points.length; i++) {
+                    const p0 = stroke.points[i - 1];
+                    const p1 = stroke.points[i];
+                    ctx.lineWidth = stroke.isEraser ? 20 : Math.max(2, stroke.size * (0.7 + (p1.pressure || 0.5) * 0.6));
                     ctx.beginPath();
-                    ctx.arc(pt.x, pt.y, radius, 0, Math.PI * 2);
-                    ctx.fillStyle = stroke.color;
-                    ctx.fill();
-                } else {
-                    for (let i = 1; i < stroke.points.length; i++) {
-                        const prev = stroke.points[i - 1];
-                        const curr = stroke.points[i];
-                        ctx.beginPath();
-                        ctx.moveTo(prev.x, prev.y);
-                        ctx.lineTo(curr.x, curr.y);
-                        if (!stroke.isEraser) {
-                            ctx.lineWidth = stroke.size * (0.65 + curr.pressure * 0.75);
-                        }
-                        ctx.stroke();
-                    }
+                    ctx.moveTo(p0.x, p0.y);
+                    ctx.lineTo(p1.x, p1.y);
+                    ctx.stroke();
                 }
                 ctx.restore();
             });
         }
 
-        function openApplePenModal(elementId, label) {
-            const targetEl = document.getElementById(elementId);
-            if (!targetEl) return;
-
-            applePenState.targetElementId = elementId;
-            applePenState.targetLabel = label;
-            applePenState.strokes = [];
-            applePenState.currentStroke = null;
-            applePenState.isEraser = false;
-
-            document.getElementById('apple-pen-target-label').textContent = `Write into: ${label}`;
-            document.getElementById('apple-pen-loading').classList.add('hidden');
+        function openApplePenModal(targetElementId, targetLabel) {
+            applePenState.targetElementId = targetElementId;
+            applePenState.targetLabel = targetLabel || 'Field';
+            document.getElementById('apple-pen-target-label').textContent = `Write into: ${applePenState.targetLabel}`;
             document.getElementById('apple-pen-preview-box').classList.add('hidden');
-            document.getElementById('apple-pen-converted-text').value = '';
-            document.getElementById('apple-pen-placeholder').classList.remove('hidden');
-
-            const eraserBtn = document.getElementById('pen-eraser-btn');
-            if (eraserBtn) {
-                eraserBtn.className = 'px-3 py-1.5 rounded-xl bg-white hover:bg-candy/50 text-ink text-xs font-bold border border-songbird cursor-pointer';
-            }
-
-            const modeSelect = document.getElementById('apple-pen-insert-mode');
-            if (targetEl.tagName === 'TEXTAREA' && targetEl.value.trim().length > 0) {
-                modeSelect.value = 'append';
-            } else {
-                modeSelect.value = 'replace';
-            }
+            document.getElementById('apple-pen-loading').classList.add('hidden');
 
             const modal = document.getElementById('apple-pen-modal');
             modal.classList.remove('hidden');
             modal.classList.add('flex');
 
             requestAnimationFrame(() => {
-                resizeApplePenCanvas();
-                redrawApplePenCanvas();
+                const canvas = document.getElementById('apple-pen-canvas');
+                if (canvas) {
+                    const rect = canvas.getBoundingClientRect();
+                    canvas.width = Math.max(300, Math.floor(rect.width * 2));
+                    canvas.height = Math.max(200, Math.floor(rect.height * 2));
+                    clearPenCanvas();
+                }
             });
         }
 
         function closeApplePenModal() {
             const modal = document.getElementById('apple-pen-modal');
-            modal.classList.add('hidden');
-            modal.classList.remove('flex');
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }
         }
 
-        function setPenColor(hexColor, btnEl) {
-            applePenState.penColor = hexColor;
+        function setPenColor(colorHex, btnEl) {
+            applePenState.penColor = colorHex;
             applePenState.isEraser = false;
             document.querySelectorAll('.pen-color-btn').forEach(b => {
                 b.classList.remove('ring-2', 'ring-offset-2', 'ring-summercrush');
             });
-            if (btnEl) btnEl.classList.add('ring-2', 'ring-offset-2', 'ring-summercrush');
-            const eraserBtn = document.getElementById('pen-eraser-btn');
-            if (eraserBtn) {
-                eraserBtn.className = 'px-3 py-1.5 rounded-xl bg-white hover:bg-candy/50 text-ink text-xs font-bold border border-songbird cursor-pointer';
+            if (btnEl) {
+                btnEl.classList.add('ring-2', 'ring-offset-2', 'ring-summercrush');
             }
         }
 
