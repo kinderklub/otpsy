@@ -267,7 +267,7 @@
             <button type="button" data-tab="pain" onclick="switchTab('pain')" class="tab-btn shrink-0 px-4 py-2 rounded-2xl font-semibold text-sm flex items-center gap-2 bg-songbird/40 hover:bg-songbird/70 text-ink cursor-pointer">
                 <span class="w-6 h-6 rounded-full bg-extraglazed text-ink text-xs flex items-center justify-center font-bold">6</span>
                 <span>Pain Score</span>
-                <span id="nav-pain-badge" class="px-2 py-0.5 rounded-full bg-daffodils text-ink text-xs font-bold">0/10</span>
+                <span id="nav-pain-badge" class="px-2 py-0.5 rounded-full bg-daffodils text-ink text-xs font-bold">Pre 0 • Dur 0 • Post 0</span>
             </button>
 
             <button type="button" data-tab="soap" onclick="switchTab('soap')" class="tab-btn shrink-0 px-4 py-2 rounded-2xl font-semibold text-sm flex items-center gap-2 bg-songbird/40 hover:bg-songbird/70 text-ink cursor-pointer">
@@ -866,21 +866,38 @@
             <div class="fairy-card rounded-3xl p-5 sm:p-7">
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 mb-6 border-b-2 border-songbird">
                     <div>
-                        <span class="inline-block px-3 py-1 rounded-full bg-daffodils text-ink text-xs font-bold uppercase tracking-wide mb-1">Visual Analog Scale (VAS) • Patient Self-Select</span>
+                        <span class="inline-block px-3 py-1 rounded-full bg-daffodils text-ink text-xs font-bold uppercase tracking-wide mb-1">Visual Analog Scale (VAS) • Pre, During & Post</span>
                         <h2 class="text-2xl sm:text-3xl font-bold text-ink">Pain Score Assessment</h2>
-                        <p class="text-sm text-ink/75 mt-1">Slide the bar or tap a number (<strong>0 to 10</strong>) below to indicate your current pain level.</p>
+                        <p class="text-sm text-ink/75 mt-1">Select <strong>Pre</strong>, <strong>During</strong>, or <strong>Post</strong> tab below, then slide or tap a number (<strong>0 to 10</strong>) to update the face.</p>
                     </div>
-                    <span id="pain-score-badge" class="px-4 py-2 rounded-2xl bg-starrynight text-ink font-bold text-sm shrink-0">0 / 10 • No Pain</span>
+                    <span id="pain-score-badge" class="px-4 py-2 rounded-2xl bg-starrynight text-ink font-bold text-sm shrink-0">Pre: 0/10 • No Pain</span>
                 </div>
 
-                <!-- Interactive Crayon Face + Slider Card -->
+                <!-- 3 Phase Tabs: Pre, During, Post -->
+                <div class="max-w-3xl mx-auto mb-5 grid grid-cols-3 gap-2.5">
+                    <button type="button" data-pain-phase="pre" onclick="switchPainPhase('pre')" class="pain-phase-tab-btn p-3 rounded-2xl bg-summercrush text-white border-2 border-ink font-bold text-xs sm:text-sm fairy-btn flex flex-col items-center justify-center gap-0.5 cursor-pointer">
+                        <span>Pre-Session</span>
+                        <span id="pain-tab-score-pre" class="text-xs opacity-90 font-semibold">0 / 10</span>
+                    </button>
+                    <button type="button" data-pain-phase="during" onclick="switchPainPhase('during')" class="pain-phase-tab-btn p-3 rounded-2xl bg-white hover:bg-songbird/40 text-ink border-2 border-songbird font-bold text-xs sm:text-sm flex flex-col items-center justify-center gap-0.5 cursor-pointer">
+                        <span>During Session</span>
+                        <span id="pain-tab-score-during" class="text-xs opacity-75 font-semibold">0 / 10</span>
+                    </button>
+                    <button type="button" data-pain-phase="post" onclick="switchPainPhase('post')" class="pain-phase-tab-btn p-3 rounded-2xl bg-white hover:bg-songbird/40 text-ink border-2 border-songbird font-bold text-xs sm:text-sm flex flex-col items-center justify-center gap-0.5 cursor-pointer">
+                        <span>Post-Session</span>
+                        <span id="pain-tab-score-post" class="text-xs opacity-75 font-semibold">0 / 10</span>
+                    </button>
+                </div>
+
+                <!-- Interactive Single Crayon Face + Slider Card -->
                 <div class="max-w-3xl mx-auto p-6 sm:p-8 rounded-3xl bg-white border-4 border-daffodils shadow-sm space-y-6">
                     <!-- Dynamic Crayon Drawing SVG Face + Score Readout -->
                     <div class="flex flex-col sm:flex-row items-center justify-center gap-6 text-center sm:text-left">
                         <div id="crayon-face-container" class="w-36 h-36 sm:w-40 sm:h-40 shrink-0 flex items-center justify-center"></div>
 
                         <div class="space-y-1.5">
-                            <div class="inline-flex items-baseline gap-1.5">
+                            <span id="pain-active-phase-label" class="inline-block px-3 py-0.5 rounded-full bg-songbird/70 text-ink text-xs font-bold uppercase tracking-wide">Pre-Session Pain Level</span>
+                            <div class="flex items-baseline justify-center sm:justify-start gap-1.5">
                                 <span id="pain-number-large" class="text-5xl sm:text-6xl font-bold text-ink">0</span>
                                 <span class="text-2xl font-bold text-ink/50">/ 10</span>
                             </div>
@@ -2060,8 +2077,17 @@
                 transfers: 15
             },
             mbiTouched: false,
-            painScore: 0,
-            painTouched: false,
+            activePainPhase: 'pre',
+            painScores: {
+                pre: 0,
+                during: 0,
+                post: 0
+            },
+            painTouched: {
+                pre: false,
+                during: false,
+                post: false
+            },
             subjectiveMood: '',
             subjectiveAppearance: '',
             soap: {
@@ -2093,39 +2119,38 @@
         };
 
         // =========================================================================
-        // 3. UI UTILITIES (TOASTS & CUSTOM MODALS)
+        // 3. UI HELPERS (TOASTS, MODALS, FIELD RESET/DELETE)
         // =========================================================================
+
+        let modalConfirmCallback = null;
 
         function showToast(message, bgClass = 'bg-starrynight') {
             const container = document.getElementById('toast-container');
             if (!container) return;
             const toast = document.createElement('div');
-            toast.className = `${bgClass} text-ink border-2 border-ink/15 px-4 py-3 rounded-2xl shadow-lg text-xs sm:text-sm font-bold flex items-center justify-between gap-2 transition-all transform translate-y-0 opacity-100 pointer-events-auto`;
-            toast.innerHTML = `<span>${message}</span>`;
+            toast.className = `pointer-events-auto px-4 py-3 rounded-2xl border-2 border-ink shadow-lg text-xs sm:text-sm font-bold text-ink ${bgClass} transition-all duration-200`;
+            toast.textContent = message;
             container.appendChild(toast);
             setTimeout(() => {
                 toast.style.opacity = '0';
-                toast.style.transform = 'translateY(-8px)';
                 setTimeout(() => toast.remove(), 250);
-            }, 3000);
+            }, 2600);
         }
 
-        let modalConfirmCallback = null;
-
-        function openModal({ title, message, icon = null, confirmText = 'Continue', showCancel = true, onConfirm = null }) {
+        function openModal({ title, message, icon, confirmText = 'Continue', onConfirm }) {
             const modal = document.getElementById('custom-modal');
-            document.getElementById('modal-title').textContent = title;
-            document.getElementById('modal-message').textContent = message;
-            document.getElementById('modal-icon').innerHTML = icon || getCuteSvg('alert', 'w-6 h-6');
+            if (!modal) return;
+            document.getElementById('modal-title').textContent = title || 'Confirmation';
+            document.getElementById('modal-message').textContent = message || '';
+            document.getElementById('modal-icon').innerHTML = icon || getCuteSvg('sparkles', 'w-6 h-6');
             const confirmBtn = document.getElementById('modal-confirm-btn');
-            const cancelBtn = document.getElementById('modal-cancel-btn');
             confirmBtn.textContent = confirmText;
-            cancelBtn.style.display = showCancel ? 'inline-block' : 'none';
-            modalConfirmCallback = onConfirm;
-            confirmBtn.onclick = () => {
-                const cb = modalConfirmCallback;
+            modalConfirmCallback = onConfirm || null;
+            confirmBtn.onclick = async () => {
                 closeModal();
-                if (typeof cb === 'function') cb();
+                if (typeof modalConfirmCallback === 'function') {
+                    await modalConfirmCallback();
+                }
             };
             modal.classList.remove('hidden');
             modal.classList.add('flex');
@@ -2133,20 +2158,63 @@
 
         function closeModal() {
             const modal = document.getElementById('custom-modal');
+            if (!modal) return;
             modal.classList.add('hidden');
             modal.classList.remove('flex');
             modalConfirmCallback = null;
         }
 
+        function resetField(fieldId) {
+            const el = document.getElementById(fieldId);
+            if (!el) return;
+            if (fieldId === 'soap-live-preview') {
+                appState.customLiveRecordText = null;
+                updateSoapPreview();
+                showToast('Live record synced back to form inputs.', 'bg-songbird');
+                return;
+            }
+            const defaultVal = appState.defaultInputs[fieldId] !== undefined ? appState.defaultInputs[fieldId] : '';
+            el.value = defaultVal;
+            if (fieldId.startsWith('dass-pt-')) {
+                const map = { 'dass-pt-name': 'name', 'dass-pt-ic': 'ic', 'dass-pt-age': 'age' };
+                syncDassPatientFields(defaultVal, map[fieldId]);
+            } else if (fieldId.startsWith('pt-')) {
+                saveAndSync();
+            } else if (fieldId.startsWith('soap-')) {
+                updateSoapPreview();
+            }
+            showToast('Field reset.', 'bg-songbird');
+        }
+
+        function deleteField(fieldId) {
+            const el = document.getElementById(fieldId);
+            if (!el) return;
+            el.value = '';
+            if (fieldId === 'soap-live-preview') {
+                appState.customLiveRecordText = '';
+                showToast('Live record cleared.', 'bg-rollerrink');
+                return;
+            }
+            if (fieldId.startsWith('dass-pt-')) {
+                const map = { 'dass-pt-name': 'name', 'dass-pt-ic': 'ic', 'dass-pt-age': 'age' };
+                syncDassPatientFields('', map[fieldId]);
+            } else if (fieldId.startsWith('pt-')) {
+                saveAndSync();
+            } else if (fieldId.startsWith('soap-')) {
+                updateSoapPreview();
+            }
+            showToast('Field cleared.', 'bg-rollerrink');
+        }
+
         // =========================================================================
-        // 4. NAVIGATION, FOOTER VISIBILITY & PATIENT MODE
+        // 4. NAVIGATION, FOOTER VISIBILITY & PATIENT SELF-FILL MODE
         // =========================================================================
 
         function updateFooterVisibility() {
             const footer = document.getElementById('main-footer');
             if (!footer) return;
-            const hideOnTabs = ['dass', 'interest', 'sensory'];
-            if (appState.patientMode || hideOnTabs.includes(appState.activeTab)) {
+            const hideTabs = ['dass', 'interest', 'sensory'];
+            if (appState.patientMode || hideTabs.includes(appState.activeTab)) {
                 footer.classList.add('hidden');
             } else {
                 footer.classList.remove('hidden');
@@ -2162,9 +2230,9 @@
             document.querySelectorAll('.tab-btn').forEach(btn => {
                 if (btn.dataset.tab === tabName) {
                     btn.classList.remove('bg-songbird/40', 'hover:bg-songbird/70');
-                    btn.classList.add('bg-allthat', 'shadow-xs');
+                    btn.classList.add('active', 'bg-allthat', 'shadow-xs');
                 } else {
-                    btn.classList.remove('bg-allthat', 'shadow-xs');
+                    btn.classList.remove('active', 'bg-allthat', 'shadow-xs');
                     btn.classList.add('bg-songbird/40', 'hover:bg-songbird/70');
                 }
             });
@@ -2173,69 +2241,66 @@
                 updateSoapPreview();
             }
             updateFooterVisibility();
-            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
         function togglePatientMode(enable) {
-            appState.patientMode = enable;
-            const header = document.getElementById('main-header');
+            appState.patientMode = Boolean(enable);
+            const mainHeader = document.getElementById('main-header');
             const ptBanner = document.getElementById('patient-mode-banner');
-            const dassOffice = document.getElementById('dass-office-use');
-            const dassDoneFooter = document.getElementById('patient-mode-done-footer');
-            const dassClinicianFooter = document.getElementById('dass-clinician-footer');
-            const interestDoneFooter = document.getElementById('patient-mode-interest-footer');
-            const interestClinicianFooter = document.getElementById('interest-clinician-footer');
-            const sensoryOffice = document.getElementById('sensory-office-use');
-            const sensoryDoneFooter = document.getElementById('patient-mode-sensory-footer');
-            const sensoryClinicianFooter = document.getElementById('sensory-clinician-footer');
 
-            if (enable) {
-                header.classList.add('hidden');
+            if (appState.patientMode) {
+                mainHeader.classList.add('hidden');
                 ptBanner.classList.remove('hidden');
-                if (dassOffice) dassOffice.classList.add('hidden');
-                if (dassDoneFooter) dassDoneFooter.classList.remove('hidden');
-                if (dassClinicianFooter) dassClinicianFooter.classList.add('hidden');
-                if (interestDoneFooter) interestDoneFooter.classList.remove('hidden');
-                if (interestClinicianFooter) interestClinicianFooter.classList.add('hidden');
-                if (sensoryOffice) sensoryOffice.classList.add('hidden');
-                if (sensoryDoneFooter) sensoryDoneFooter.classList.remove('hidden');
-                if (sensoryClinicianFooter) sensoryClinicianFooter.classList.add('hidden');
+                document.getElementById('dass-office-use')?.classList.add('hidden');
+                document.getElementById('dass-clinician-footer')?.classList.add('hidden');
+                document.getElementById('patient-mode-done-footer')?.classList.remove('hidden');
 
-                const targetPtTab = ['dass', 'interest', 'sensory'].includes(appState.activeTab)
-                    ? appState.activeTab
-                    : 'dass';
+                document.getElementById('interest-clinician-footer')?.classList.add('hidden');
+                document.getElementById('patient-mode-interest-footer')?.classList.remove('hidden');
+
+                document.getElementById('sensory-office-use')?.classList.add('hidden');
+                document.getElementById('sensory-clinician-footer')?.classList.add('hidden');
+                document.getElementById('patient-mode-sensory-footer')?.classList.remove('hidden');
+
+                const targetPtTab = ['dass', 'interest', 'sensory'].includes(appState.activeTab) ? appState.activeTab : 'dass';
                 switchPatientAssessment(targetPtTab);
-                showToast('Patient Self-Fill Mode active.', 'bg-starrynight');
             } else {
-                header.classList.remove('hidden');
+                mainHeader.classList.remove('hidden');
                 ptBanner.classList.add('hidden');
-                if (dassOffice) dassOffice.classList.remove('hidden');
-                if (dassDoneFooter) dassDoneFooter.classList.add('hidden');
-                if (dassClinicianFooter) dassClinicianFooter.classList.remove('hidden');
-                if (interestDoneFooter) interestDoneFooter.classList.add('hidden');
-                if (interestClinicianFooter) interestClinicianFooter.classList.remove('hidden');
-                if (sensoryOffice) sensoryOffice.classList.remove('hidden');
-                if (sensoryDoneFooter) sensoryDoneFooter.classList.add('hidden');
-                if (sensoryClinicianFooter) sensoryClinicianFooter.classList.remove('hidden');
-                updateFooterVisibility();
-                showToast('Returned to Clinician View (OT Lya).', 'bg-allthat');
+                document.getElementById('dass-office-use')?.classList.remove('hidden');
+                document.getElementById('dass-clinician-footer')?.classList.remove('hidden');
+                document.getElementById('patient-mode-done-footer')?.classList.add('hidden');
+
+                document.getElementById('interest-clinician-footer')?.classList.remove('hidden');
+                document.getElementById('patient-mode-interest-footer')?.classList.add('hidden');
+
+                document.getElementById('sensory-office-use')?.classList.remove('hidden');
+                document.getElementById('sensory-clinician-footer')?.classList.remove('hidden');
+                document.getElementById('patient-mode-sensory-footer')?.classList.add('hidden');
+
+                switchTab(appState.activeTab);
             }
+            updateFooterVisibility();
         }
 
-        function switchPatientAssessment(formKey) {
-            appState.patientAssessmentTab = formKey;
-            const titleMap = {
+        function switchPatientAssessment(ptTab) {
+            appState.patientAssessmentTab = ptTab;
+            appState.activeTab = ptTab;
+
+            document.querySelectorAll('.tab-section').forEach(sec => sec.classList.add('hidden'));
+            const activeSec = document.getElementById(`tab-${ptTab}`);
+            if (activeSec) activeSec.classList.remove('hidden');
+
+            const titles = {
                 dass: 'Sila lengkapkan Borang DASS-21 di bawah (Please complete DASS-21 below)',
-                interest: 'Sila tandakan Interest Checklist di bawah (Please complete Interest Checklist below)',
-                sensory: 'Sila lengkapkan Adult Sensory Profile di bawah (Please complete Adult Sensory Profile below)'
+                interest: 'Sila tandakan Minat & Aktiviti anda di bawah (Please select your Interests below)',
+                sensory: 'Sila lengkapkan Profil Sensori Dewasa di bawah (Please complete Adult Sensory Profile below)'
             };
             const titleEl = document.getElementById('patient-mode-title');
-            if (titleEl && titleMap[formKey]) {
-                titleEl.textContent = titleMap[formKey];
-            }
+            if (titleEl) titleEl.textContent = titles[ptTab] || titles.dass;
 
             document.querySelectorAll('.pt-mode-tab-btn').forEach(btn => {
-                if (btn.dataset.ptTab === formKey) {
+                if (btn.dataset.ptTab === ptTab) {
                     btn.classList.remove('bg-extraglazed', 'hover:bg-white', 'text-ink');
                     btn.classList.add('bg-summercrush', 'text-white', 'shadow-xs');
                 } else {
@@ -2243,138 +2308,129 @@
                     btn.classList.add('bg-extraglazed', 'hover:bg-white', 'text-ink');
                 }
             });
-
-            switchTab(formKey);
+            updateFooterVisibility();
         }
 
         // =========================================================================
-        // 5. PATIENT DETAILS & INDIVIDUAL FIELD RESET / DELETE
+        // 5. PATIENT PARTICULARS SYNC
         // =========================================================================
-
-        function resetField(elementId) {
-            const el = document.getElementById(elementId);
-            if (!el) return;
-            if (elementId === 'soap-live-preview') {
-                appState.customLiveRecordText = null;
-                updateSoapPreview();
-                showToast('Live Clinical Record synced back from ticked/typed items.', 'bg-songbird');
-                return;
-            }
-            const defaultVal = appState.defaultInputs[elementId] !== undefined ? appState.defaultInputs[elementId] : '';
-            el.value = defaultVal;
-
-            if (elementId.startsWith('dass-pt-')) {
-                const map = { 'dass-pt-name': 'name', 'dass-pt-ic': 'ic', 'dass-pt-age': 'age' };
-                syncDassPatientFields(defaultVal, map[elementId]);
-            } else if (elementId.startsWith('pt-')) {
-                saveAndSync();
-            } else if (elementId.startsWith('soap-')) {
-                updateSoapPreview();
-            }
-            showToast('Box reset to default.', 'bg-songbird');
-        }
-
-        function deleteField(elementId) {
-            const el = document.getElementById(elementId);
-            if (!el) return;
-            el.value = '';
-
-            if (elementId === 'soap-live-preview') {
-                appState.customLiveRecordText = '';
-                showToast('Live Clinical Record cleared.', 'bg-rollerrink');
-                return;
-            }
-            if (elementId.startsWith('dass-pt-')) {
-                const map = { 'dass-pt-name': 'name', 'dass-pt-ic': 'ic', 'dass-pt-age': 'age' };
-                syncDassPatientFields('', map[elementId]);
-            } else if (elementId.startsWith('pt-')) {
-                saveAndSync();
-            } else if (elementId.startsWith('soap-')) {
-                updateSoapPreview();
-            }
-            showToast('Box cleared.', 'bg-rollerrink');
-        }
 
         function saveAndSync() {
-            appState.patient.name = document.getElementById('pt-name').value.trim();
-            appState.patient.ic = document.getElementById('pt-ic').value.trim();
-            appState.patient.mrn = document.getElementById('pt-mrn').value.trim();
-            appState.patient.age = document.getElementById('pt-age').value.trim();
-            appState.patient.gender = document.getElementById('pt-gender').value;
-            appState.patient.date = document.getElementById('pt-date').value;
-            appState.patient.marital = document.getElementById('pt-marital').value;
-            appState.patient.occupation = document.getElementById('pt-occupation').value.trim();
-            appState.patient.diagnosis = document.getElementById('pt-diagnosis').value.trim();
-            appState.patient.meds = document.getElementById('pt-meds').value.trim();
-            appState.patient.social = document.getElementById('pt-social').value.trim();
+            appState.patient = {
+                name: (document.getElementById('pt-name')?.value || '').trim(),
+                ic: (document.getElementById('pt-ic')?.value || '').trim(),
+                mrn: (document.getElementById('pt-mrn')?.value || '').trim(),
+                age: (document.getElementById('pt-age')?.value || '').trim(),
+                gender: document.getElementById('pt-gender')?.value || '',
+                date: document.getElementById('pt-date')?.value || new Date().toISOString().split('T')[0],
+                marital: document.getElementById('pt-marital')?.value || '',
+                occupation: (document.getElementById('pt-occupation')?.value || '').trim(),
+                diagnosis: (document.getElementById('pt-diagnosis')?.value || '').trim(),
+                meds: (document.getElementById('pt-meds')?.value || '').trim(),
+                social: (document.getElementById('pt-social')?.value || '').trim()
+            };
 
-            document.getElementById('dass-pt-name').value = appState.patient.name;
-            document.getElementById('dass-pt-ic').value = appState.patient.ic;
-            document.getElementById('dass-pt-age').value = appState.patient.age;
-            document.getElementById('dass-pt-date').value = appState.patient.date;
+            const dName = document.getElementById('dass-pt-name');
+            const dIc = document.getElementById('dass-pt-ic');
+            const dAge = document.getElementById('dass-pt-age');
+            const dDate = document.getElementById('dass-pt-date');
+            if (dName) dName.value = appState.patient.name;
+            if (dIc) dIc.value = appState.patient.ic;
+            if (dAge) dAge.value = appState.patient.age;
+            if (dDate) dDate.value = appState.patient.date;
 
             const summaryEl = document.getElementById('header-pt-summary');
-            if (appState.patient.name) {
-                const agePart = appState.patient.age ? ` (${appState.patient.age})` : '';
-                const dxPart = appState.patient.diagnosis ? ` • ${appState.patient.diagnosis}` : '';
-                summaryEl.textContent = `${appState.patient.name}${agePart}${dxPart}`;
-            } else {
-                summaryEl.textContent = 'Patient: Not Entered';
+            if (summaryEl) {
+                if (appState.patient.name) {
+                    summaryEl.textContent = appState.patient.mrn
+                        ? `${appState.patient.name} (${appState.patient.mrn})`
+                        : appState.patient.name;
+                } else {
+                    summaryEl.textContent = 'Patient: Not Entered';
+                }
             }
 
             updateSoapPreview();
         }
 
-        function syncDassPatientFields(val, field) {
-            appState.patient[field] = val;
-            if (field === 'name') document.getElementById('pt-name').value = val;
-            if (field === 'ic') document.getElementById('pt-ic').value = val;
-            if (field === 'age') document.getElementById('pt-age').value = val;
-            if (field === 'date') document.getElementById('pt-date').value = val;
+        function syncDassPatientFields(val, key) {
+            const map = {
+                name: 'pt-name',
+                ic: 'pt-ic',
+                age: 'pt-age',
+                date: 'pt-date'
+            };
+            const target = document.getElementById(map[key]);
+            if (target) target.value = val;
             saveAndSync();
         }
 
         // =========================================================================
-        // 6. DASS-21 BILINGUAL RENDERING & SCORING
+        // 6. DASS-21 RENDERING & AUTOMATED SCORING
         // =========================================================================
 
-        function renderDassQuestions() {
-            const container = document.getElementById('dass-questions-container');
-            container.innerHTML = DASS_QUESTIONS.map(q => {
-                const currentVal = appState.dassAnswers[q.id];
-                const buttonsHtml = DASS_SCALE_OPTIONS.map(opt => {
-                    const isSelected = currentVal === opt.val;
-                    const activeClasses = isSelected
-                        ? 'bg-summercrush text-white border-summercrush shadow-xs scale-[1.02]'
-                        : 'bg-white hover:bg-songbird/40 text-ink border-songbird';
-                    return `
-                        <button type="button" onclick="selectDassAnswer(${q.id}, ${opt.val})"
-                            class="px-3 py-2.5 rounded-2xl border-2 font-bold text-xs sm:text-sm transition-all cursor-pointer ${activeClasses}">
-                            ${opt.short}
-                        </button>
-                    `;
-                }).join('');
-
-                return `
-                    <div class="p-4 rounded-2xl bg-white border-2 ${currentVal !== undefined ? 'border-allthat' : 'border-songbird'} flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-                        <div class="flex items-start gap-3">
-                            <span class="w-7 h-7 rounded-xl bg-songbird text-ink font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">${q.id}</span>
-                            <div>
-                                <p class="text-sm sm:text-base font-bold text-ink leading-snug">${q.bm}</p>
-                                <p class="text-xs sm:text-sm italic text-ink/70 mt-0.5">${q.en}</p>
-                            </div>
-                        </div>
-                        <div class="grid grid-cols-4 gap-1.5 sm:gap-2 shrink-0 lg:w-80">
-                            ${buttonsHtml}
-                        </div>
-                    </div>
-                `;
-            }).join('');
-            recalculateDass();
+        function getDassSeverity(scale, score) {
+            if (scale === 'D') {
+                if (score <= 4) return { label: 'Normal', bg: 'bg-starrynight' };
+                if (score <= 6) return { label: 'Mild', bg: 'bg-heartfelt' };
+                if (score <= 10) return { label: 'Moderate', bg: 'bg-daffodils' };
+                if (score <= 13) return { label: 'Severe', bg: 'bg-rollerrink' };
+                return { label: 'Extremely Severe', bg: 'bg-summercrush text-white' };
+            }
+            if (scale === 'A') {
+                if (score <= 3) return { label: 'Normal', bg: 'bg-starrynight' };
+                if (score <= 5) return { label: 'Mild', bg: 'bg-heartfelt' };
+                if (score <= 7) return { label: 'Moderate', bg: 'bg-daffodils' };
+                if (score <= 9) return { label: 'Severe', bg: 'bg-rollerrink' };
+                return { label: 'Extremely Severe', bg: 'bg-summercrush text-white' };
+            }
+            if (score <= 7) return { label: 'Normal', bg: 'bg-starrynight' };
+            if (score <= 9) return { label: 'Mild', bg: 'bg-heartfelt' };
+            if (score <= 12) return { label: 'Moderate', bg: 'bg-daffodils' };
+            if (score <= 16) return { label: 'Severe', bg: 'bg-rollerrink' };
+            return { label: 'Extremely Severe', bg: 'bg-summercrush text-white' };
         }
 
-        function selectDassAnswer(questionId, value) {
-            appState.dassAnswers[questionId] = value;
+        function recalculateDass() {
+            let d = 0, a = 0, s = 0, answered = 0;
+            DASS_QUESTIONS.forEach(q => {
+                if (appState.dassAnswers[q.id] !== undefined) {
+                    const val = Number(appState.dassAnswers[q.id]);
+                    answered++;
+                    if (q.scale === 'D') d += val;
+                    if (q.scale === 'A') a += val;
+                    if (q.scale === 'S') s += val;
+                }
+            });
+
+            const dInfo = getDassSeverity('D', d);
+            const aInfo = getDassSeverity('A', a);
+            const sInfo = getDassSeverity('S', s);
+
+            const dValEl = document.getElementById('score-depression-val');
+            const aValEl = document.getElementById('score-anxiety-val');
+            const sValEl = document.getElementById('score-stress-val');
+            if (dValEl) dValEl.textContent = d;
+            if (aValEl) aValEl.textContent = a;
+            if (sValEl) sValEl.textContent = s;
+
+            const dBadge = document.getElementById('score-depression-badge');
+            const aBadge = document.getElementById('score-anxiety-badge');
+            const sBadge = document.getElementById('score-stress-badge');
+            if (dBadge) { dBadge.textContent = dInfo.label; dBadge.className = `px-3.5 py-1.5 rounded-2xl font-bold text-sm ${dInfo.bg}`; }
+            if (aBadge) { aBadge.textContent = aInfo.label; aBadge.className = `px-3.5 py-1.5 rounded-2xl font-bold text-sm ${aInfo.bg}`; }
+            if (sBadge) { sBadge.textContent = sInfo.label; sBadge.className = `px-3.5 py-1.5 rounded-2xl font-bold text-sm ${sInfo.bg}`; }
+
+            const navBadge = document.getElementById('nav-dass-badge');
+            const statusEl = document.getElementById('dass-completion-status');
+            if (navBadge) navBadge.textContent = `${answered}/21`;
+            if (statusEl) statusEl.textContent = `${answered} of 21 answered`;
+
+            return { d, a, s, answered, dSev: dInfo.label, aSev: aInfo.label, sSev: sInfo.label };
+        }
+
+        function setDassAnswer(qId, val) {
+            appState.dassAnswers[qId] = val;
             renderDassQuestions();
             updateSoapPreview();
         }
@@ -2386,99 +2442,104 @@
             showToast('DASS-21 answers cleared.', 'bg-rollerrink');
         }
 
-        function getDassSeverity(type, score) {
-            if (type === 'D') {
-                if (score <= 4) return { label: 'Normal', bg: 'bg-starrynight text-ink' };
-                if (score <= 6) return { label: 'Mild', bg: 'bg-heartfelt text-ink' };
-                if (score <= 10) return { label: 'Moderate', bg: 'bg-daffodils text-ink' };
-                if (score <= 13) return { label: 'Severe', bg: 'bg-rollerrink text-ink' };
-                return { label: 'Extremely Severe', bg: 'bg-summercrush text-white' };
-            }
-            if (type === 'A') {
-                if (score <= 3) return { label: 'Normal', bg: 'bg-starrynight text-ink' };
-                if (score <= 5) return { label: 'Mild', bg: 'bg-heartfelt text-ink' };
-                if (score <= 7) return { label: 'Moderate', bg: 'bg-daffodils text-ink' };
-                if (score <= 9) return { label: 'Severe', bg: 'bg-rollerrink text-ink' };
-                return { label: 'Extremely Severe', bg: 'bg-summercrush text-white' };
-            }
-            if (score <= 7) return { label: 'Normal', bg: 'bg-starrynight text-ink' };
-            if (score <= 9) return { label: 'Mild', bg: 'bg-heartfelt text-ink' };
-            if (score <= 12) return { label: 'Moderate', bg: 'bg-daffodils text-ink' };
-            if (score <= 16) return { label: 'Severe', bg: 'bg-rollerrink text-ink' };
-            return { label: 'Extremely Severe', bg: 'bg-summercrush text-white' };
-        }
+        function renderDassQuestions() {
+            const container = document.getElementById('dass-questions-container');
+            if (!container) return;
 
-        function recalculateDass() {
-            let d = 0, a = 0, s = 0, answered = 0;
-            DASS_QUESTIONS.forEach(q => {
-                const val = appState.dassAnswers[q.id];
-                if (val !== undefined) {
-                    answered++;
-                    if (q.scale === 'D') d += val;
-                    if (q.scale === 'A') a += val;
-                    if (q.scale === 'S') s += val;
-                }
-            });
+            container.innerHTML = DASS_QUESTIONS.map(q => {
+                const selected = appState.dassAnswers[q.id];
+                const buttonsHtml = DASS_SCALE_OPTIONS.map(opt => {
+                    const isSelected = selected === opt.val;
+                    return `
+                        <button type="button" onclick="setDassAnswer(${q.id}, ${opt.val})"
+                            class="px-3 py-2.5 rounded-xl border-2 font-bold text-xs sm:text-sm transition-all cursor-pointer ${isSelected ? 'bg-summercrush text-white border-ink shadow-xs scale-[1.02]' : 'bg-extraglazed hover:bg-songbird/40 text-ink border-songbird'}">
+                            ${opt.short}
+                        </button>
+                    `;
+                }).join('');
 
-            document.getElementById('nav-dass-badge').textContent = `${answered}/21`;
-            document.getElementById('dass-completion-status').textContent = `${answered} of 21 answered`;
+                return `
+                    <div class="p-4 rounded-2xl bg-white border-2 ${selected !== undefined ? 'border-allthat' : 'border-songbird'} flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                        <div class="flex items-start gap-3">
+                            <span class="w-7 h-7 rounded-xl bg-songbird text-ink font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">${q.id}</span>
+                            <div>
+                                <p class="text-sm sm:text-base font-bold text-ink leading-snug">${q.bm}</p>
+                                <p class="text-xs sm:text-sm italic text-ink/70 mt-0.5">${q.en}</p>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-4 gap-1.5 shrink-0 lg:w-80">
+                            ${buttonsHtml}
+                        </div>
+                    </div>
+                `;
+            }).join('');
 
-            const dSev = getDassSeverity('D', d);
-            const aSev = getDassSeverity('A', a);
-            const sSev = getDassSeverity('S', s);
-
-            document.getElementById('score-depression-val').textContent = d;
-            const dBadge = document.getElementById('score-depression-badge');
-            dBadge.textContent = dSev.label;
-            dBadge.className = `px-3.5 py-1.5 rounded-2xl font-bold text-sm ${dSev.bg}`;
-
-            document.getElementById('score-anxiety-val').textContent = a;
-            const aBadge = document.getElementById('score-anxiety-badge');
-            aBadge.textContent = aSev.label;
-            aBadge.className = `px-3.5 py-1.5 rounded-2xl font-bold text-sm ${aSev.bg}`;
-
-            document.getElementById('score-stress-val').textContent = s;
-            const sBadge = document.getElementById('score-stress-badge');
-            sBadge.textContent = sSev.label;
-            sBadge.className = `px-3.5 py-1.5 rounded-2xl font-bold text-sm ${sSev.bg}`;
-
-            return { d, a, s, answered, dSev: dSev.label, aSev: aSev.label, sSev: sSev.label };
+            recalculateDass();
         }
 
         // =========================================================================
-        // 7. MODIFIED INTEREST CHECKLIST (BILINGUAL BM & ENGLISH)
+        // 7. MODIFIED INTEREST CHECKLIST
         // =========================================================================
+
+        function toggleInterestChoice(itemName, type) {
+            if (!appState.interestState[itemName]) {
+                appState.interestState[itemName] = { past: false, current: false, goal: false };
+            }
+            appState.interestState[itemName][type] = !appState.interestState[itemName][type];
+            renderInterestChecklist();
+            updateSoapPreview();
+        }
+
+        function addCustomInterest() {
+            const input = document.getElementById('custom-interest-input');
+            if (!input) return;
+            const val = input.value.trim();
+            if (!val) {
+                showToast('Please enter an activity name first.', 'bg-rollerrink');
+                return;
+            }
+            if (!appState.customInterests.includes(val)) {
+                appState.customInterests.push(val);
+            }
+            appState.interestState[val] = { past: false, current: true, goal: true };
+            input.value = '';
+            renderInterestChecklist();
+            updateSoapPreview();
+            showToast(`Added custom activity: ${val}`, 'bg-starrynight');
+        }
 
         function renderInterestChecklist() {
             const container = document.getElementById('interest-categories-container');
-            const allCategories = [...INTEREST_CATEGORIES];
+            if (!container) return;
+
+            const categories = [...INTEREST_CATEGORIES];
             if (appState.customInterests.length > 0) {
-                allCategories.push({
+                categories.push({
                     title: 'Aktiviti Khusus Pesakit / Custom Patient Activities',
-                    badgeColor: 'bg-rollerrink',
+                    badgeColor: 'bg-starrynight',
                     items: appState.customInterests
                 });
             }
 
-            container.innerHTML = allCategories.map(cat => {
+            container.innerHTML = categories.map(cat => {
                 const rowsHtml = cat.items.map(item => {
-                    const state = appState.interestState[item] || { past: false, current: false, goal: false };
-                    const safeKey = encodeURIComponent(item);
+                    const st = appState.interestState[item] || { past: false, current: false, goal: false };
+                    const safeItem = JSON.stringify(item).replace(/"/g, '&quot;');
                     return `
-                        <div class="p-3.5 rounded-2xl bg-white border border-songbird flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                        <div class="p-3.5 rounded-2xl bg-white border-2 border-songbird flex flex-col md:flex-row md:items-center justify-between gap-2.5">
                             <span class="text-sm font-bold text-ink">${item}</span>
-                            <div class="grid grid-cols-3 gap-2 shrink-0">
-                                <button type="button" onclick="toggleInterestCheck('${safeKey}', 'past')"
-                                    class="px-3 py-1.5 rounded-xl border text-xs font-bold cursor-pointer transition-all ${state.past ? 'bg-allthat text-ink border-ink/20' : 'bg-extraglazed text-ink/70 border-songbird'}">
-                                    ${state.past ? '✓ ' : ''}Minat Dulu (Past)
+                            <div class="grid grid-cols-3 gap-2 shrink-0 md:w-80">
+                                <button type="button" onclick="toggleInterestChoice(${safeItem}, 'past')"
+                                    class="px-2.5 py-2 rounded-xl border-2 text-xs font-bold cursor-pointer transition-all ${st.past ? 'bg-daffodils border-ink text-ink shadow-xs' : 'bg-extraglazed border-songbird text-ink/75 hover:bg-songbird/30'}">
+                                    ${st.past ? '✓ ' : ''}Minat Dulu (Past)
                                 </button>
-                                <button type="button" onclick="toggleInterestCheck('${safeKey}', 'current')"
-                                    class="px-3 py-1.5 rounded-xl border text-xs font-bold cursor-pointer transition-all ${state.current ? 'bg-starrynight text-ink border-ink/20' : 'bg-extraglazed text-ink/70 border-songbird'}">
-                                    ${state.current ? '✓ ' : ''}Minat Kini (Now)
+                                <button type="button" onclick="toggleInterestChoice(${safeItem}, 'current')"
+                                    class="px-2.5 py-2 rounded-xl border-2 text-xs font-bold cursor-pointer transition-all ${st.current ? 'bg-starrynight border-ink text-ink shadow-xs' : 'bg-extraglazed border-songbird text-ink/75 hover:bg-songbird/30'}">
+                                    ${st.current ? '✓ ' : ''}Sekarang (Now)
                                 </button>
-                                <button type="button" onclick="toggleInterestCheck('${safeKey}', 'goal')"
-                                    class="px-3 py-1.5 rounded-xl border text-xs font-bold cursor-pointer transition-all ${state.goal ? 'bg-summercrush text-white border-summercrush' : 'bg-extraglazed text-ink/70 border-songbird'}">
-                                    ${state.goal ? '✓ ' : ''}Ingin Sertai (Goal)
+                                <button type="button" onclick="toggleInterestChoice(${safeItem}, 'goal')"
+                                    class="px-2.5 py-2 rounded-xl border-2 text-xs font-bold cursor-pointer transition-all ${st.goal ? 'bg-summercrush border-ink text-white shadow-xs' : 'bg-extraglazed border-songbird text-ink/75 hover:bg-songbird/30'}">
+                                    ${st.goal ? '✓ ' : ''}Ingin Sertai (Goal)
                                 </button>
                             </div>
                         </div>
@@ -2488,68 +2549,26 @@
                 return `
                     <div class="space-y-2.5">
                         <div class="flex items-center gap-2">
-                            <span class="px-3 py-1 rounded-xl ${cat.badgeColor} text-ink text-xs font-bold uppercase tracking-wide">${cat.title}</span>
+                            <span class="px-3.5 py-1 rounded-full ${cat.badgeColor} text-ink text-xs font-bold uppercase tracking-wide">${cat.title}</span>
                         </div>
                         <div class="space-y-2">${rowsHtml}</div>
                     </div>
                 `;
             }).join('');
 
-            updateInterestSummary();
-        }
-
-        function toggleInterestCheck(encodedItem, field) {
-            const item = decodeURIComponent(encodedItem);
-            if (!appState.interestState[item]) {
-                appState.interestState[item] = { past: false, current: false, goal: false };
-            }
-            appState.interestState[item][field] = !appState.interestState[item][field];
-            renderInterestChecklist();
-            updateSoapPreview();
-        }
-
-        function addCustomInterest() {
-            const input = document.getElementById('custom-interest-input');
-            const val = input.value.trim();
-            if (!val) return;
-            if (!appState.customInterests.includes(val)) {
-                appState.customInterests.push(val);
-            }
-            appState.interestState[val] = { past: false, current: true, goal: true };
-            input.value = '';
-            renderInterestChecklist();
-            updateSoapPreview();
-            showToast('Custom activity added!', 'bg-starrynight');
-        }
-
-        function updateInterestSummary() {
             let currentCount = 0;
             let goalCount = 0;
             Object.values(appState.interestState).forEach(st => {
                 if (st.current) currentCount++;
                 if (st.goal) goalCount++;
             });
-            document.getElementById('interest-summary-count').textContent = `${currentCount} Current • ${goalCount} Future Goals`;
+            const summaryEl = document.getElementById('interest-summary-count');
+            if (summaryEl) summaryEl.textContent = `${currentCount} Current • ${goalCount} Future Goals`;
         }
 
         // =========================================================================
-        // 8. ADULT SENSORY PROFILE (FULL 60 ITEMS - BILINGUAL BM & ENGLISH)
+        // 8. ADULT SENSORY PROFILE (60 ITEMS - DUNN'S 4 QUADRANTS)
         // =========================================================================
-
-        function renderSensoryFilterBar() {
-            const sections = ['ALL', 'Taste/Smell', 'Movement', 'Visual', 'Touch', 'Activity Level', 'Auditory'];
-            const bar = document.getElementById('sensory-filter-bar');
-            bar.innerHTML = sections.map(sec => {
-                const isActive = appState.sensoryFilter === sec;
-                const label = sec === 'ALL' ? 'All Sections (60)' : sec;
-                return `
-                    <button type="button" onclick="setSensoryFilter('${sec}')"
-                        class="px-3.5 py-1.5 rounded-2xl text-xs font-bold cursor-pointer transition-all ${isActive ? 'bg-summercrush text-white shadow-xs' : 'bg-songbird/50 hover:bg-songbird text-ink'}">
-                        ${label}
-                    </button>
-                `;
-            }).join('');
-        }
 
         function setSensoryFilter(sec) {
             appState.sensoryFilter = sec;
@@ -2557,35 +2576,133 @@
             renderSensoryItems();
         }
 
+        function renderSensoryFilterBar() {
+            const bar = document.getElementById('sensory-filter-bar');
+            if (!bar) return;
+            const sections = ['ALL', 'Taste/Smell', 'Movement', 'Visual', 'Touch', 'Activity Level', 'Auditory'];
+            bar.innerHTML = sections.map(sec => {
+                const active = appState.sensoryFilter === sec;
+                return `
+                    <button type="button" onclick="setSensoryFilter('${sec}')"
+                        class="px-3.5 py-1.5 rounded-xl text-xs font-bold border-2 cursor-pointer transition-all ${active ? 'bg-allthat border-ink text-ink shadow-xs' : 'bg-white border-songbird text-ink/80 hover:bg-songbird/30'}">
+                        ${sec === 'ALL' ? 'All Sections (60)' : sec}
+                    </button>
+                `;
+            }).join('');
+        }
+
+        function setSensoryAnswer(itemId, val) {
+            appState.sensoryAnswers[itemId] = val;
+            renderSensoryItems();
+            updateSoapPreview();
+        }
+
+        function getQuadrantClassification(quad, score) {
+            const cutoffs = {
+                lowreg: [23, 30, 40, 47],
+                seeking: [35, 42, 55, 62],
+                sensitivity: [25, 33, 47, 54],
+                avoiding: [26, 34, 48, 55]
+            };
+            const c = cutoffs[quad] || [25, 33, 47, 54];
+            if (score <= c[0]) return { label: 'Much Less Than Most', bg: 'bg-songbird/60' };
+            if (score <= c[1]) return { label: 'Less Than Most', bg: 'bg-starrynight/60' };
+            if (score <= c[2]) return { label: 'Similar to Most People', bg: 'bg-heartfelt/70' };
+            if (score <= c[3]) return { label: 'More Than Most', bg: 'bg-daffodils' };
+            return { label: 'Much More Than Most', bg: 'bg-summercrush text-white' };
+        }
+
+        function recalculateSensory() {
+            const totals = { lowreg: 0, seeking: 0, sensitivity: 0, avoiding: 0 };
+            let answered = 0;
+
+            SENSORY_ITEMS.forEach(item => {
+                if (appState.sensoryAnswers[item.id] !== undefined) {
+                    answered++;
+                    totals[item.quad] += Number(appState.sensoryAnswers[item.id]);
+                }
+            });
+
+            const navBadge = document.getElementById('nav-sensory-badge');
+            const progressPill = document.getElementById('sensory-progress-pill');
+            if (navBadge) navBadge.textContent = `${answered}/60`;
+            if (progressPill) progressPill.textContent = `${answered} / 60 Answered`;
+
+            const grid = document.getElementById('sensory-quadrants-grid');
+            if (grid) {
+                const quads = [
+                    { key: 'lowreg', title: 'Low Registration', sub: 'High neurological threshold • Passive' },
+                    { key: 'seeking', title: 'Sensation Seeking', sub: 'High neurological threshold • Active' },
+                    { key: 'sensitivity', title: 'Sensory Sensitivity', sub: 'Low neurological threshold • Passive' },
+                    { key: 'avoiding', title: 'Sensation Avoiding', sub: 'Low neurological threshold • Active' }
+                ];
+
+                grid.innerHTML = quads.map(q => {
+                    const sc = totals[q.key];
+                    const cls = getQuadrantClassification(q.key, sc);
+                    return `
+                        <div class="p-4 rounded-2xl bg-white border-2 border-allthat space-y-1.5">
+                            <p class="text-sm font-bold text-ink">${q.title}</p>
+                            <p class="text-[11px] text-ink/65">${q.sub}</p>
+                            <p class="text-2xl font-bold text-ink">${sc} <span class="text-xs font-semibold text-ink/55">/ 75</span></p>
+                            <span class="inline-block px-2.5 py-1 rounded-xl text-xs font-bold ${cls.bg}">${cls.label}</span>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            const recEl = document.getElementById('sensory-recommendation-text');
+            if (recEl && answered > 0) {
+                const recs = [];
+                if (totals.sensitivity > 47 || totals.avoiding > 48) {
+                    recs.push('Implement low-stimulation environment modifications, noise-reducing strategies (earplugs/quiet breaks), and predictable daily transitions.');
+                }
+                if (totals.lowreg > 40) {
+                    recs.push('Use multi-sensory alerting cues (visual schedules, contrasting colors, structured verbal prompts) during ADL/IADL tasks.');
+                }
+                if (totals.seeking > 55) {
+                    recs.push('Incorporate structured proprioceptive and movement-based sensory diet activities (brisk walking, heavy work tasks) into routine.');
+                }
+                if (recs.length === 0) {
+                    recs.push('Sensory processing scores fall within typical adult range; maintain balanced sensory diet and self-regulation awareness.');
+                }
+                recEl.textContent = recs.join(' ');
+            }
+
+            return { totals, answered };
+        }
+
         function renderSensoryItems() {
             const container = document.getElementById('sensory-items-container');
+            if (!container) return;
+
             const filtered = appState.sensoryFilter === 'ALL'
                 ? SENSORY_ITEMS
-                : SENSORY_ITEMS.filter(item => item.sec === appState.sensoryFilter);
+                : SENSORY_ITEMS.filter(it => it.sec === appState.sensoryFilter);
 
             container.innerHTML = filtered.map(item => {
-                const val = appState.sensoryAnswers[item.id];
+                const selected = appState.sensoryAnswers[item.id];
                 const btns = [1, 2, 3, 4, 5].map(num => {
-                    const selected = val === num;
+                    const isSelected = selected === num;
                     return `
-                        <button type="button" onclick="selectSensoryAnswer(${item.id}, ${num})"
-                            class="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl border-2 font-bold text-sm cursor-pointer transition-all ${selected ? 'bg-summercrush text-white border-summercrush scale-105' : 'bg-white hover:bg-songbird/40 text-ink border-songbird'}">
+                        <button type="button" onclick="setSensoryAnswer(${item.id}, ${num})"
+                            class="py-2 rounded-xl border-2 font-bold text-xs sm:text-sm cursor-pointer transition-all ${isSelected ? 'bg-summercrush text-white border-ink shadow-xs scale-105' : 'bg-extraglazed hover:bg-songbird/40 text-ink border-songbird'}">
                             ${num}
                         </button>
                     `;
                 }).join('');
 
                 return `
-                    <div class="p-4 rounded-2xl bg-white border-2 ${val !== undefined ? 'border-starrynight' : 'border-songbird'} flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                    <div class="p-4 rounded-2xl bg-white border-2 ${selected !== undefined ? 'border-allthat' : 'border-songbird'} flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                         <div class="flex items-start gap-3">
-                            <span class="px-2.5 py-1 rounded-xl bg-songbird text-ink font-bold text-xs shrink-0 mt-0.5">#${item.id}</span>
+                            <span class="w-7 h-7 rounded-xl bg-starrynight/60 text-ink font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">${item.id}</span>
                             <div>
-                                <span class="inline-block px-2 py-0.5 rounded-lg bg-extraglazed border border-songbird text-[10px] font-bold uppercase text-ink/70 mb-1">${item.sec}</span>
-                                <p class="text-sm sm:text-base font-bold text-ink leading-snug">${item.bm}</p>
-                                <p class="text-xs sm:text-sm italic text-ink/70 mt-0.5">${item.en}</p>
+                                <span class="inline-block px-2 py-0.5 rounded-md bg-songbird/50 text-ink text-[10px] font-bold uppercase mb-1">${item.sec}</span>
+                                <p class="text-sm font-bold text-ink leading-snug">${item.bm}</p>
+                                <p class="text-xs italic text-ink/70 mt-0.5">${item.en}</p>
                             </div>
                         </div>
-                        <div class="flex items-center gap-1.5 shrink-0 self-end lg:self-center">
+                        <div class="grid grid-cols-5 gap-1.5 shrink-0 lg:w-64">
                             ${btns}
                         </div>
                     </div>
@@ -2595,118 +2712,101 @@
             recalculateSensory();
         }
 
-        function selectSensoryAnswer(id, score) {
-            appState.sensoryAnswers[id] = score;
-            renderSensoryItems();
-            updateSoapPreview();
-        }
-
-        function getQuadrantClassification(quad, score) {
-            const ranges = {
-                lowreg: [23, 30, 44, 52],
-                seeking: [35, 42, 56, 63],
-                sensitivity: [25, 32, 48, 56],
-                avoiding: [26, 33, 49, 57]
-            };
-            const [c1, c2, c3, c4] = ranges[quad];
-            if (score <= c1) return { label: 'Much Less Than Most', bg: 'bg-starrynight/50' };
-            if (score <= c2) return { label: 'Less Than Most', bg: 'bg-heartfelt/60' };
-            if (score <= c3) return { label: 'Similar to Most People', bg: 'bg-songbird/60' };
-            if (score <= c4) return { label: 'More Than Most', bg: 'bg-daffodils/80' };
-            return { label: 'Much More Than Most', bg: 'bg-summercrush text-white' };
-        }
-
-        function recalculateSensory() {
-            const totals = { lowreg: 0, seeking: 0, sensitivity: 0, avoiding: 0 };
-            let answered = 0;
-
-            SENSORY_ITEMS.forEach(item => {
-                const v = appState.sensoryAnswers[item.id];
-                if (v !== undefined) {
-                    answered++;
-                    totals[item.quad] += v;
-                }
-            });
-
-            document.getElementById('nav-sensory-badge').textContent = `${answered}/60`;
-            document.getElementById('sensory-progress-pill').textContent = `${answered} / 60 Answered`;
-
-            const quadMeta = [
-                { key: 'lowreg', title: 'Low Registration', sub: 'High threshold • Passive' },
-                { key: 'seeking', title: 'Sensation Seeking', sub: 'High threshold • Active' },
-                { key: 'sensitivity', title: 'Sensory Sensitivity', sub: 'Low threshold • Passive' },
-                { key: 'avoiding', title: 'Sensation Avoiding', sub: 'Low threshold • Active' }
-            ];
-
-            const grid = document.getElementById('sensory-quadrants-grid');
-            grid.innerHTML = quadMeta.map(q => {
-                const sc = totals[q.key];
-                const cls = answered > 0 ? getQuadrantClassification(q.key, sc) : { label: 'Pending Input', bg: 'bg-songbird/40' };
-                return `
-                    <div class="p-4 rounded-3xl bg-white border-2 border-allthat space-y-1.5">
-                        <p class="text-xs font-bold uppercase text-ink/60">${q.sub}</p>
-                        <h4 class="text-base font-bold text-ink">${q.title}</h4>
-                        <p class="text-2xl font-bold text-ink">${sc} <span class="text-xs font-medium text-ink/50">/ 75</span></p>
-                        <span class="inline-block px-2.5 py-1 rounded-xl text-xs font-bold ${cls.bg}">${cls.label}</span>
-                    </div>
-                `;
-            }).join('');
-
-            const recEl = document.getElementById('sensory-recommendation-text');
-            if (answered === 0) {
-                recEl.textContent = 'Complete the sensory items above to generate individualized sensory modulation recommendations.';
-            } else {
-                const recs = [];
-                if (totals.sensitivity >= 49 || totals.avoiding >= 50) {
-                    recs.push('Provide low-stimulation quiet workspace, noise-canceling/earplug options, soft lighting, and predictable transitions to prevent sensory overload.');
-                }
-                if (totals.seeking >= 57) {
-                    recs.push('Incorporate scheduled proprioceptive/vestibular movement breaks, textured fidgets, and active physical outlets into daily routine.');
-                }
-                if (totals.lowreg >= 45) {
-                    recs.push('Use multi-sensory alerting cues (visual checklists, clear verbal prompts, structured alarms, and contrasting colors) to support task initiation.');
-                }
-                if (recs.length === 0) {
-                    recs.push('Balanced sensory processing profile across quadrants; maintain individualized calming and alerting sensory tools as needed.');
-                }
-                recEl.textContent = recs.join(' ');
-            }
-
-            return { totals, answered };
-        }
-
         // =========================================================================
         // 9. MODIFIED BARTHEL INDEX - SHAH ET AL. (1989)
         // =========================================================================
 
+        function recalculateMbi() {
+            let total = 0;
+            Object.values(appState.mbiScores).forEach(v => {
+                total += Number(v || 0);
+            });
+
+            let category = 'Independent (100)';
+            let desc = 'Patient performs all 10 self-care and mobility tasks independently without assistance.';
+            let badgeClass = 'bg-starrynight text-ink';
+
+            if (total <= 20) {
+                category = `Total Dependency (${total}/100)`;
+                desc = 'Requires complete assistance across basic self-care and mobility tasks.';
+                badgeClass = 'bg-rollerrink text-ink';
+            } else if (total <= 60) {
+                category = `Severe Dependency (${total}/100)`;
+                desc = 'Requires substantial physical and supervisory assistance in most ADLs.';
+                badgeClass = 'bg-candy text-ink';
+            } else if (total <= 90) {
+                category = `Moderate Dependency (${total}/100)`;
+                desc = 'Requires moderate assistance or setup in several self-care/mobility areas.';
+                badgeClass = 'bg-daffodils text-ink';
+            } else if (total <= 99) {
+                category = `Slight Dependency (${total}/100)`;
+                desc = 'Largely independent with minimal supervision or setup required.';
+                badgeClass = 'bg-heartfelt text-ink';
+            }
+
+            const totalEl = document.getElementById('mbi-total-display');
+            const badgeEl = document.getElementById('mbi-category-badge');
+            const descEl = document.getElementById('mbi-category-desc');
+            const navBadge = document.getElementById('nav-mbi-badge');
+
+            if (totalEl) totalEl.textContent = total;
+            if (badgeEl) {
+                badgeEl.textContent = category;
+                badgeEl.className = `inline-block px-4 py-1.5 rounded-2xl font-bold text-sm mb-1 ${badgeClass}`;
+            }
+            if (descEl) descEl.textContent = desc;
+            if (navBadge) navBadge.textContent = `${total}/100`;
+
+            return { total, category };
+        }
+
+        function setShahMbiScore(itemId, scoreVal) {
+            appState.mbiScores[itemId] = Number(scoreVal);
+            appState.mbiTouched = true;
+            renderShahMbi();
+            updateSoapPreview();
+        }
+
+        function resetShahMbi() {
+            SHAH_MBI_ITEMS.forEach(item => {
+                const maxLevel = item.levels[item.levels.length - 1];
+                appState.mbiScores[item.id] = maxLevel.score;
+            });
+            appState.mbiTouched = false;
+            renderShahMbi();
+            updateSoapPreview();
+        }
+
         function renderShahMbi() {
             const container = document.getElementById('shah-mbi-items-container');
+            if (!container) return;
+
             container.innerHTML = SHAH_MBI_ITEMS.map(item => {
-                const selectedScore = appState.mbiScores[item.id];
+                const currentScore = appState.mbiScores[item.id];
                 const levelsHtml = item.levels.map(lvl => {
-                    const isSelected = selectedScore === lvl.score;
+                    const isSelected = currentScore === lvl.score;
                     return `
-                        <button type="button" onclick="selectMbiLevel('${item.id}', ${lvl.score})"
-                            class="text-left p-3 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between gap-1.5 ${isSelected ? 'bg-heartfelt/55 border-ink shadow-xs' : 'bg-extraglazed hover:bg-songbird/25 border-songbird'}">
+                        <button type="button" onclick="setShahMbiScore('${item.id}', ${lvl.score})"
+                            class="p-3 rounded-2xl border-2 text-left flex flex-col justify-between gap-1.5 transition-all cursor-pointer ${isSelected ? 'bg-heartfelt/70 border-ink shadow-xs' : 'bg-extraglazed hover:bg-songbird/30 border-songbird'}">
                             <div class="flex items-center justify-between gap-1">
-                                <span class="px-2.5 py-0.5 rounded-lg text-xs font-bold ${isSelected ? 'bg-ink text-white' : 'bg-songbird/60 text-ink'}">${lvl.score} pts</span>
+                                <span class="px-2 py-0.5 rounded-lg ${isSelected ? 'bg-ink text-white' : 'bg-songbird text-ink'} text-xs font-bold">${lvl.score} pts</span>
                                 <span class="text-xs font-bold text-ink">${lvl.label}</span>
                             </div>
-                            <p class="text-[11px] sm:text-xs text-ink/80 leading-snug">${lvl.desc}</p>
+                            <p class="text-[11px] text-ink/80 leading-snug">${lvl.desc}</p>
                         </button>
                     `;
                 }).join('');
 
                 return `
                     <div class="p-4 sm:p-5 rounded-3xl bg-white border-2 border-songbird space-y-3">
-                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
                             <div>
                                 <h3 class="text-base sm:text-lg font-bold text-ink">${item.title}</h3>
                                 <p class="text-xs text-ink/65">${item.subtitle}</p>
                             </div>
-                            <span class="px-3 py-1 rounded-xl bg-starrynight/40 text-ink text-xs font-bold self-start sm:self-center">Selected: ${selectedScore} pts</span>
+                            <span class="px-3 py-1 rounded-xl bg-starrynight/60 text-ink text-xs font-bold">Selected: ${currentScore} pts</span>
                         </div>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
                             ${levelsHtml}
                         </div>
                     </div>
@@ -2716,66 +2816,39 @@
             recalculateMbi();
         }
 
-        function selectMbiLevel(itemId, score) {
-            appState.mbiScores[itemId] = score;
-            appState.mbiTouched = true;
-            renderShahMbi();
-            updateSoapPreview();
-        }
+        // =========================================================================
+        // 10. VISUAL ANALOG PAIN SLIDER + CRAYON-DRAWING SVG FACE (PRE / DURING / POST)
+        // =========================================================================
 
-        function resetShahMbi() {
-            SHAH_MBI_ITEMS.forEach(item => {
-                const maxLvl = item.levels[item.levels.length - 1];
-                appState.mbiScores[item.id] = maxLvl.score;
+        const PAIN_PHASE_META = {
+            pre: { short: 'Pre', label: 'Pre-Session Pain Level' },
+            during: { short: 'During', label: 'During Session Pain Level' },
+            post: { short: 'Post', label: 'Post-Session Pain Level' }
+        };
+
+        function switchPainPhase(phase) {
+            if (!PAIN_PHASE_META[phase]) return;
+            appState.activePainPhase = phase;
+
+            document.querySelectorAll('.pain-phase-tab-btn').forEach(btn => {
+                if (btn.dataset.painPhase === phase) {
+                    btn.classList.remove('bg-white', 'hover:bg-songbird/40', 'text-ink', 'border-songbird');
+                    btn.classList.add('bg-summercrush', 'text-white', 'border-ink', 'fairy-btn');
+                } else {
+                    btn.classList.remove('bg-summercrush', 'text-white', 'border-ink', 'fairy-btn');
+                    btn.classList.add('bg-white', 'hover:bg-songbird/40', 'text-ink', 'border-songbird');
+                }
             });
-            appState.mbiTouched = false;
-            renderShahMbi();
-            updateSoapPreview();
-            showToast('Shah MBI reset to 100/100 (Independent).', 'bg-heartfelt');
+
+            const currentPhaseScore = appState.painScores[phase] || 0;
+            updatePainScore(currentPhaseScore, false);
         }
-
-        function recalculateMbi() {
-            const total = Object.values(appState.mbiScores).reduce((acc, v) => acc + (Number(v) || 0), 0);
-            let category = 'Independent (100)';
-            let desc = 'Patient performs all 10 self-care and mobility tasks independently without assistance.';
-            let badgeBg = 'bg-starrynight text-ink';
-
-            if (total <= 20) {
-                category = 'Total Dependency (0–20)';
-                desc = 'Requires full physical assistance across basic self-care, continence, and mobility.';
-                badgeBg = 'bg-rollerrink text-ink';
-            } else if (total <= 60) {
-                category = 'Severe Dependency (21–60)';
-                desc = 'Requires substantial assistance in most self-care and transfer/ambulation domains.';
-                badgeBg = 'bg-candy text-ink';
-            } else if (total <= 90) {
-                category = 'Moderate Dependency (61–90)';
-                desc = 'Performs several tasks with setup/supervision but requires moderate help in specific ADLs.';
-                badgeBg = 'bg-daffodils text-ink';
-            } else if (total <= 99) {
-                category = 'Slight Dependency (91–99)';
-                desc = 'Near-independent in all ADLs; requires minimal supervision or setup in 1–2 areas.';
-                badgeBg = 'bg-heartfelt text-ink';
-            }
-
-            document.getElementById('nav-mbi-badge').textContent = `${total}/100`;
-            document.getElementById('mbi-total-display').textContent = total;
-            const badge = document.getElementById('mbi-category-badge');
-            badge.textContent = category;
-            badge.className = `inline-block px-4 py-1.5 rounded-2xl font-bold text-sm mb-1 ${badgeBg}`;
-            document.getElementById('mbi-category-desc').textContent = desc;
-
-            return { total, category };
-        }
-
-        // =========================================================================
-        // 10. VISUAL ANALOG PAIN SLIDER + CRAYON-DRAWING SVG FACE
-        // =========================================================================
 
         function renderPainButtons() {
             const container = document.getElementById('pain-number-buttons');
+            const activeScore = Number(appState.painScores[appState.activePainPhase] || 0);
             container.innerHTML = PAIN_LEVELS.map(p => {
-                const isSelected = Number(appState.painScore) === p.score;
+                const isSelected = activeScore === p.score;
                 return `
                     <button type="button" onclick="updatePainScore(${p.score}, true)"
                         class="py-2 rounded-xl border-2 font-bold text-xs sm:text-sm cursor-pointer transition-all ${isSelected ? 'bg-summercrush text-white border-ink scale-105 shadow-xs' : 'bg-extraglazed hover:bg-songbird/40 text-ink border-songbird'}">
@@ -2874,21 +2947,29 @@
         }
 
         function updatePainScore(val, fromUser = false) {
+            const phase = appState.activePainPhase || 'pre';
             const score = Math.max(0, Math.min(10, Number(val) || 0));
-            appState.painScore = score;
+            appState.painScores[phase] = score;
             if (fromUser) {
-                appState.painTouched = true;
+                appState.painTouched[phase] = true;
             }
             const info = PAIN_LEVELS[score];
+            const phaseInfo = PAIN_PHASE_META[phase];
 
             document.getElementById('pain-vas-slider').value = score;
+            document.getElementById('pain-active-phase-label').textContent = phaseInfo.label;
             document.getElementById('pain-number-large').textContent = score;
             document.getElementById('pain-level-title').textContent = info.title;
             document.getElementById('pain-level-desc').textContent = info.desc;
-            document.getElementById('nav-pain-badge').textContent = `${score}/10`;
+
+            document.getElementById('pain-tab-score-pre').textContent = `${appState.painScores.pre} / 10`;
+            document.getElementById('pain-tab-score-during').textContent = `${appState.painScores.during} / 10`;
+            document.getElementById('pain-tab-score-post').textContent = `${appState.painScores.post} / 10`;
+
+            document.getElementById('nav-pain-badge').textContent = `Pre ${appState.painScores.pre} • Dur ${appState.painScores.during} • Post ${appState.painScores.post}`;
 
             const badge = document.getElementById('pain-score-badge');
-            badge.textContent = `${score} / 10 • ${info.title.split(' (')[0]}`;
+            badge.textContent = `${phaseInfo.short}: ${score}/10 • ${info.title.split(' (')[0]}`;
             badge.className = `px-4 py-2 rounded-2xl font-bold text-sm shrink-0 ${info.bg}`;
 
             document.getElementById('crayon-face-container').innerHTML = renderCrayonPainFace(score);
@@ -3004,7 +3085,6 @@
             const dass = recalculateDass();
             const sensory = recalculateSensory();
             const mbi = recalculateMbi();
-            const painInfo = PAIN_LEVELS[appState.painScore] || PAIN_LEVELS[0];
 
             const pastInterests = [];
             const currentInterests = [];
@@ -3037,8 +3117,21 @@
                 lines.push(`- Modified Barthel Index (Shah Version): ${mbi.total}/100 — ${mbi.category}.`);
             }
 
-            if (appState.painTouched) {
-                lines.push(`- Pain Score (Visual Analog Scale): ${appState.painScore}/10 — ${painInfo.title}.`);
+            const painParts = [];
+            if (appState.painTouched.pre) {
+                const pInfo = PAIN_LEVELS[appState.painScores.pre] || PAIN_LEVELS[0];
+                painParts.push(`Pre = ${appState.painScores.pre}/10 (${pInfo.title})`);
+            }
+            if (appState.painTouched.during) {
+                const dInfo = PAIN_LEVELS[appState.painScores.during] || PAIN_LEVELS[0];
+                painParts.push(`During = ${appState.painScores.during}/10 (${dInfo.title})`);
+            }
+            if (appState.painTouched.post) {
+                const postInfo = PAIN_LEVELS[appState.painScores.post] || PAIN_LEVELS[0];
+                painParts.push(`Post = ${appState.painScores.post}/10 (${postInfo.title})`);
+            }
+            if (painParts.length > 0) {
+                lines.push(`- Pain Score (Visual Analog Scale): ${painParts.join(' | ')}.`);
             }
 
             return lines.join('\n');
@@ -3113,13 +3206,14 @@
                 badgesEl.innerHTML = `
                     <span class="px-2.5 py-1 rounded-xl bg-daffodils/50 text-ink text-xs font-bold">DASS: D=${dass.d} (${dass.dSev}) | A=${dass.a} (${dass.aSev}) | S=${dass.s} (${dass.sSev})</span>
                     <span class="px-2.5 py-1 rounded-xl bg-heartfelt/50 text-ink text-xs font-bold">MBI: ${mbi.total}/100</span>
-                    <span class="px-2.5 py-1 rounded-xl bg-candy/50 text-ink text-xs font-bold">Pain: ${appState.painScore}/10</span>
+                    <span class="px-2.5 py-1 rounded-xl bg-candy/50 text-ink text-xs font-bold">Pain: Pre ${appState.painScores.pre} | Dur ${appState.painScores.during} | Post ${appState.painScores.post}</span>
                 `;
             }
 
-            // Include ONLY patient fields that the user has actually filled in
+            // Include ONLY patient fields that the user has actually filled in, with Diagnosis placed right at the top
             const ageGender = [pt.age, pt.gender].filter(Boolean).join(' / ');
             const headerLines = [];
+            if (pt.diagnosis) headerLines.push(`Diagnosis    : ${pt.diagnosis}`);
             if (pt.name) headerLines.push(`Patient Name : ${pt.name}`);
             if (pt.ic) headerLines.push(`NRIC / No.KP : ${pt.ic}`);
             if (pt.mrn) headerLines.push(`MRN / RN     : ${pt.mrn}`);
@@ -3127,7 +3221,6 @@
             if (appState.dateTouched && pt.date) headerLines.push(`Date         : ${pt.date}`);
             if (pt.marital) headerLines.push(`Marital      : ${pt.marital}`);
             if (pt.occupation) headerLines.push(`Occupation   : ${pt.occupation}`);
-            if (pt.diagnosis) headerLines.push(`Diagnosis    : ${pt.diagnosis}`);
             if (pt.meds) headerLines.push(`Medications  : ${pt.meds}`);
             if (pt.social) headerLines.push(`Social Hx    : ${pt.social}`);
 
@@ -3330,8 +3423,8 @@
                 mbiScores: { ...appState.mbiScores },
                 mbiTouched: appState.mbiTouched,
                 mbiSummary: mbi,
-                painScore: appState.painScore,
-                painTouched: appState.painTouched,
+                painScores: { ...appState.painScores },
+                painTouched: { ...appState.painTouched },
                 subjectiveMood: appState.subjectiveMood,
                 subjectiveAppearance: appState.subjectiveAppearance,
                 soap: {
@@ -3453,7 +3546,11 @@
                 const pt = rec.patient || {};
                 const dass = rec.dassSummary || { d: 0, a: 0, s: 0 };
                 const mbiTotal = rec.mbiSummary ? rec.mbiSummary.total : 100;
-                const painVal = rec.painScore !== undefined ? rec.painScore : 0;
+                const pScores = rec.painScores || {
+                    pre: rec.painScore !== undefined ? rec.painScore : 0,
+                    during: 0,
+                    post: 0
+                };
                 const dateLabel = rec.savedAt ? new Date(rec.savedAt).toLocaleString() : (pt.date || 'Saved Record');
 
                 return `
@@ -3468,7 +3565,7 @@
                             <div class="flex flex-wrap gap-1.5 pt-1">
                                 <span class="px-2 py-0.5 rounded-lg bg-daffodils/50 text-ink text-[11px] font-bold">DASS: D${dass.d}/A${dass.a}/S${dass.s}</span>
                                 <span class="px-2 py-0.5 rounded-lg bg-heartfelt/50 text-ink text-[11px] font-bold">MBI: ${mbiTotal}/100</span>
-                                <span class="px-2 py-0.5 rounded-lg bg-candy/50 text-ink text-[11px] font-bold">Pain: ${painVal}/10</span>
+                                <span class="px-2 py-0.5 rounded-lg bg-candy/50 text-ink text-[11px] font-bold">Pain: ${pScores.pre}/${pScores.during}/${pScores.post}</span>
                             </div>
                         </div>
 
@@ -3530,8 +3627,20 @@
             } else {
                 appState.mbiTouched = false;
             }
-            appState.painScore = rec.painScore !== undefined ? Number(rec.painScore) : 0;
-            appState.painTouched = rec.painTouched !== undefined ? Boolean(rec.painTouched) : (appState.painScore > 0);
+            if (rec.painScores) {
+                appState.painScores = {
+                    pre: Number(rec.painScores.pre || 0),
+                    during: Number(rec.painScores.during || 0),
+                    post: Number(rec.painScores.post || 0)
+                };
+                appState.painTouched = rec.painTouched
+                    ? { pre: Boolean(rec.painTouched.pre), during: Boolean(rec.painTouched.during), post: Boolean(rec.painTouched.post) }
+                    : { pre: appState.painScores.pre > 0, during: appState.painScores.during > 0, post: appState.painScores.post > 0 };
+            } else {
+                const legacyPain = rec.painScore !== undefined ? Number(rec.painScore) : 0;
+                appState.painScores = { pre: legacyPain, during: 0, post: 0 };
+                appState.painTouched = { pre: legacyPain > 0, during: false, post: false };
+            }
 
             if (rec.subjectiveMood) selectSubjectiveMood(rec.subjectiveMood);
             if (rec.subjectiveAppearance) selectSubjectiveAppearance(rec.subjectiveAppearance);
@@ -3546,7 +3655,7 @@
             renderInterestChecklist();
             renderSensoryItems();
             renderShahMbi();
-            updatePainScore(appState.painScore, appState.painTouched);
+            switchPainPhase('pre');
             saveAndSync();
 
             if (rec.compiledSoapText !== undefined) {
@@ -4154,7 +4263,9 @@
             // Sample Shah MBI & Pain Score
             resetShahMbi();
             appState.mbiTouched = true;
-            updatePainScore(2, true);
+            appState.painScores = { pre: 3, during: 2, post: 0 };
+            appState.painTouched = { pre: true, during: true, post: true };
+            switchPainPhase('pre');
 
             selectSubjectiveMood('Mood coherent');
             selectSubjectiveAppearance('Neat and tidy');
@@ -4208,8 +4319,9 @@
             });
 
             resetShahMbi();
-            appState.painTouched = false;
-            updatePainScore(0, false);
+            appState.painScores = { pre: 0, during: 0, post: 0 };
+            appState.painTouched = { pre: false, during: false, post: false };
+            switchPainPhase('pre');
             renderDassQuestions();
             renderInterestChecklist();
             renderSensoryItems();
@@ -4238,7 +4350,7 @@
                 renderSensoryFilterBar();
                 renderSensoryItems();
                 renderShahMbi();
-                updatePainScore(0, false);
+                switchPainPhase('pre');
                 renderSoapChips();
                 initApplePenCanvasEvents();
                 saveAndSync();
